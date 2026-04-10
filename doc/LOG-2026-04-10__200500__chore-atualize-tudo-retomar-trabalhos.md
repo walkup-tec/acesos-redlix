@@ -23,7 +23,7 @@ Rotina solicitada pelo usuário: **atualize tudo** (backup, build, documentaçã
    - `doc/memoria.md`: entrada com palavras-chave para a próxima sessão.
 
 5. **Git**  
-   - Commit na `main`: `c1ab920` (push para `origin/main` concluído).
+   - Push para `origin/main` concluído. Commits de referência: `c1ab920` (consolidação de código e docs), `b9dd478` (registro do hash no próprio LOG).
 
 ## Arquivos criados ou alterados nesta tarefa
 
