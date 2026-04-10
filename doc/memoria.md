@@ -1,20 +1,20 @@
-# Memória consolidada do projeto
+# Mem?ria consolidada do projeto
 
 ## 2026-04-06 - Supabase exclusivo + identidade visual Credilix
 
-- Backend ajustado para usar Supabase como persistência exclusiva.
+- Backend ajustado para usar Supabase como persist?ncia exclusiva.
 - Criado `supabase/schema.sql` com tabelas multi-tenant e RLS habilitado.
 - Branding centralizado em `config.branding` com paleta baseada no site Credilix.
 - Endpoint `GET /branding` adicionado para frontend consumir tema/logo.
-- Setup documentado no `README.md` e variáveis novas no `.env.example`.
+- Setup documentado no `README.md` e vari?veis novas no `.env.example`.
 
 ## 2026-04-06 - Frontend moderno integrado ao backend
 
 - Criado frontend React + TypeScript em `web/`.
-- Implementadas telas base: login, dashboard e módulos de usuários/produtos/tabelas/conteúdos.
-- Integração com API backend para autenticação, CRUD principal e upload de conteúdo.
+- Implementadas telas base: login, dashboard e m?dulos de usu?rios/produtos/tabelas/conte?dos.
+- Integra??o com API backend para autentica??o, CRUD principal e upload de conte?do.
 - Tema aplicado com cores Credilix consumidas via endpoint `GET /branding`.
-- Variável `VITE_API_BASE_URL` configurada em `web/.env.example`.
+- Vari?vel `VITE_API_BASE_URL` configurada em `web/.env.example`.
 
 ### Palavras-chave para pesquisa futura
 
@@ -29,12 +29,12 @@
 - ui servida na porta 5050 (web/dist + Express)
 - npm run dev:ui
 
-## 2026-04-06 - UI aero, mobile-first, menu recolhível
+## 2026-04-06 - UI aero, mobile-first, menu recolh?vel
 
-- Removido o módulo Dashboard; entrada padrão em Usuários.
-- Layout “aero”: fundo em gradiente suave, navegação e header com vidro (`backdrop-filter`), cards claros.
-- Mobile (abaixo de 901px de largura): menu em drawer, backdrop, botão hamburger; pin de recolher oculto.
-- Desktop: sidebar fixa com botão para recolher (labels curtas quando colapsado).
+- Removido o m?dulo Dashboard; entrada padr?o em Usu?rios.
+- Layout ?aero?: fundo em gradiente suave, navega??o e header com vidro (`backdrop-filter`), cards claros.
+- Mobile (abaixo de 901px de largura): menu em drawer, backdrop, bot?o hamburger; pin de recolher oculto.
+- Desktop: sidebar fixa com bot?o para recolher (labels curtas quando colapsado).
 - Logo com `object-fit: contain` e limites de largura/altura (login e nav).
 
 ### Palavras-chave
@@ -43,13 +43,13 @@
 - shell-nav drawer mobile
 - navCollapsed app-shell--nav-collapsed
 
-## 2026-04-06 - Criar usuário por e-mail + permissões; pin SVG
+## 2026-04-06 - Criar usu?rio por e-mail + permiss?es; pin SVG
 
-- Colunas `perm_*` em `public.users`; migração `supabase/migration-2026-04-06-user-permissions.sql`.
-- POST `/users/invite` com `{ email, permissions: { permCreateManagers, permCreateSellers, permCommissionTables, permContents } }`; pelo menos uma permissão obrigatória; criador não-MASTER só concede o que já tem.
-- UI: modal **Criar usuário** só para `role === MASTER` ou `canManageUsers`; menu e formulários de tabela/conteúdo condicionados às permissões.
-- Respostas de usuário via `toPublicTenantUser` (sem segredos).
-- Botão recolher menu: ícone SVG em vez de caractere.
+- Colunas `perm_*` em `public.users`; migra??o `supabase/migration-2026-04-06-user-permissions.sql`.
+- POST `/users/invite` com `{ email, permissions: { permCreateManagers, permCreateSellers, permCommissionTables, permContents } }`; pelo menos uma permiss?o obrigat?ria; criador n?o-MASTER s? concede o que j? tem.
+- UI: modal **Criar usu?rio** s? para `role === MASTER` ou `canManageUsers`; menu e formul?rios de tabela/conte?do condicionados ?s permiss?es.
+- Respostas de usu?rio via `toPublicTenantUser` (sem segredos).
+- Bot?o recolher menu: ?cone SVG em vez de caractere.
 
 ### Palavras-chave
 
@@ -57,10 +57,10 @@
 - toPublicTenantUser
 - normalizeAuthContext JWT antigo
 
-## 2026-04-06 - E-mail e fluxo público convite/ativar
+## 2026-04-06 - E-mail e fluxo p?blico convite/ativar
 
-- Envio: convite (link `/convite?token=`), aprovação (código primeiro acesso + `/ativar`), esqueci senha.
-- `MAIL_MODE`: `log` (dev), `smtp` (produção), `off`; `MAIL_FROM` + `SMTP_*`; `APP_BASE_URL` nos links.
+- Envio: convite (link `/convite?token=`), aprova??o (c?digo primeiro acesso + `/ativar`), esqueci senha.
+- `MAIL_MODE`: `log` (dev), `smtp` (produ??o), `off`; `MAIL_FROM` + `SMTP_*`; `APP_BASE_URL` nos links.
 - `GET /api/auth/invite-context`; JWT de convite 7 dias (`signInviteToken`).
 - UI: `onboarding-ui.tsx` (`/convite`, `/ativar`).
 
@@ -69,48 +69,48 @@
 - mailer nodemailer credilix-acessos
 - convite token invite-context
 
-## 2026-04-06 - Fix painel vazio pós-login (master)
+## 2026-04-06 - Fix painel vazio p?s-login (master)
 
 - `resolvedSession` + decode JWT; master com `role.toUpperCase()`; login usa claims do token.
-- `refreshAll` com `Promise.allSettled`; persistência `credilix_session`.
+- `refreshAll` com `Promise.allSettled`; persist?ncia `credilix_session`.
 
-## 2026-04-06 - Card criar usuário à esquerda + presets por tipo
+## 2026-04-06 - Card criar usu?rio ? esquerda + presets por tipo
 
-- Módulo de usuários voltou para layout com card à esquerda (sem modal) e listagem à direita.
-- Topo do card: e-mail + select de tipo (`Vendedor`, `Suporte`, `Líder`).
-- Presets automáticos por tipo com checkboxes editáveis:
-  - Vendedor: acessar conteúdo (sem editar conteúdos)
-  - Suporte: autorizar/ativar usuários
-  - Líder: criar gestores, criar vendedores, editar/criar tabela, editar/criar conteúdos
+- M?dulo de usu?rios voltou para layout com card ? esquerda (sem modal) e listagem ? direita.
+- Topo do card: e-mail + select de tipo (`Vendedor`, `Suporte`, `L?der`).
+- Presets autom?ticos por tipo com checkboxes edit?veis:
+  - Vendedor: acessar conte?do (sem editar conte?dos)
+  - Suporte: autorizar/ativar usu?rios
+  - L?der: criar gestores, criar vendedores, editar/criar tabela, editar/criar conte?dos
 - Backend: `POST /users/invite` passa a aceitar `role`, `canManageUsers`, `permViewContents`, `permCreateManagers`, `permCreateSellers`, `permCommissionTables`, `permContents`.
-- Conteúdos agora exigem permissão de visualização (`assertCanViewContents` em `listContents`).
+- Conte?dos agora exigem permiss?o de visualiza??o (`assertCanViewContents` em `listContents`).
 - Banco: nova coluna `perm_view_contents` em `users` (schema + migration).
 
-## 2026-04-06 - Produto e comissão no mesmo fluxo
+## 2026-04-06 - Produto e comiss?o no mesmo fluxo
 
 - Removida a aba separada de tabelas no frontend; fluxo consolidado em `Produtos`.
-- Formulário `Produto + tabela inicial` cria produto e tabela em sequência no mesmo submit.
-- Tela de produtos mostra lista de produtos e lista de tabelas na mesma página.
-- Campo de produto com duas funções: **Adicionar nome novo** ou **Selecionar nome já criado**.
+- Formul?rio `Produto + tabela inicial` cria produto e tabela em sequ?ncia no mesmo submit.
+- Tela de produtos mostra lista de produtos e lista de tabelas na mesma p?gina.
+- Campo de produto com duas fun??es: **Adicionar nome novo** ou **Selecionar nome j? criado**.
 
-## 2026-04-06 - Observação opcional + validação obrigatória com alerta
+## 2026-04-06 - Observa??o opcional + valida??o obrigat?ria com alerta
 
-- Tabela de comissão ganhou campo `observation` (opcional) no banco e backend.
-- Frontend adicionou input `Observação (opcional)` no formulário de criação de tabela.
-- Campos obrigatórios com alerta explícito (`alert`) quando ausentes:
+- Tabela de comiss?o ganhou campo `observation` (opcional) no banco e backend.
+- Frontend adicionou input `Observa??o (opcional)` no formul?rio de cria??o de tabela.
+- Campos obrigat?rios com alerta expl?cito (`alert`) quando ausentes:
   - Nome do produto
   - Nome da tabela
-  - Comissão
+  - Comiss?o
 
-## 2026-04-07 - Banco obrigatório + campos em linha na criação de tabela
+## 2026-04-07 - Banco obrigat?rio + campos em linha na cria??o de tabela
 
-- Criação de tabela ajustada para exibir em linha (desktop): `Produto`, `Banco`, `Tabela`, `Prazo`, `Observação`.
-- `Banco` adicionado/validado como obrigatório em toda a cadeia (UI, API, serviço e banco).
+- Cria??o de tabela ajustada para exibir em linha (desktop): `Produto`, `Banco`, `Tabela`, `Prazo`, `Observa??o`.
+- `Banco` adicionado/validado como obrigat?rio em toda a cadeia (UI, API, servi?o e banco).
 - `CommissionTable` atualizado com propriedade `bank`.
 - Migration criada para `commission_tables.bank` com `NOT NULL`:
   - `supabase/migration-2026-04-07-commission-table-bank-required.sql`
 - Listagem de tabelas padronizada na ordem:
-  - `Produto | Banco | Tabela | Prazo | Observação`
+  - `Produto | Banco | Tabela | Prazo | Observa??o`
 
 ### Palavras-chave
 
@@ -120,10 +120,10 @@
 
 ## 2026-04-07 - Lista de bancos atualizada via internet no campo Banco
 
-- Campo `Banco` da criação de tabela passou a carregar lista atualizada de bancos do Brasil via `https://brasilapi.com.br/api/banks/v1`.
-- Implementado `input` com `datalist` para seleção rápida + digitação manual.
-- Fallback local com bancos principais para manter operação mesmo sem internet/endpoint indisponível.
-- `Banco` permanece obrigatório no formulário e no backend.
+- Campo `Banco` da cria??o de tabela passou a carregar lista atualizada de bancos do Brasil via `https://brasilapi.com.br/api/banks/v1`.
+- Implementado `input` com `datalist` para sele??o r?pida + digita??o manual.
+- Fallback local com bancos principais para manter opera??o mesmo sem internet/endpoint indispon?vel.
+- `Banco` permanece obrigat?rio no formul?rio e no backend.
 
 ### Palavras-chave
 
@@ -131,11 +131,11 @@
 - datalist bancos brasil campo banco
 - fallback lista bancos
 
-## 2026-04-07 - Campo Banco convertido para select pesquisável
+## 2026-04-07 - Campo Banco convertido para select pesquis?vel
 
-- Campo `Banco` atualizado de `datalist` para `select` pesquisável (busca + seleção filtrada).
-- Busca em tempo real por código/nome, com `filteredBankOptions` no frontend.
-- Seleção continua obrigatória para manter qualidade de dados no cadastro da tabela.
+- Campo `Banco` atualizado de `datalist` para `select` pesquis?vel (busca + sele??o filtrada).
+- Busca em tempo real por c?digo/nome, com `filteredBankOptions` no frontend.
+- Sele??o continua obrigat?ria para manter qualidade de dados no cadastro da tabela.
 
 ### Palavras-chave
 
@@ -149,10 +149,285 @@
 - Tema persistido em `localStorage` e aplicado via `body[data-theme]`.
 - No modo escuro, a logo passa a usar:
   - `file:///D:/Site%20Credilix/dist/logo-credilix-light.png`
-- Ajustadas variáveis de cor e fundo para experiência dark consistente.
+- Ajustadas vari?veis de cor e fundo para experi?ncia dark consistente.
 
 ### Palavras-chave
 
 - dark mode credilix acessos
 - theme toggle localstorage
 - logo-credilix-light modo escuro
+
+## 2026-04-07 - Corre??o de contraste no modo escuro + logo vis?vel
+
+- Corrigida refer?ncia da logo no dark mode para asset servido pela aplica??o (`/branding-assets/logo-credilix-light.png`).
+- Adicionado arquivo `public/branding/logo-credilix-light.png`.
+- Refeita calibra??o visual do dark mode para melhorar contraste em:
+  - fundo, cards e header;
+  - menu ativo;
+  - inputs/selects;
+  - bot?o de altern?ncia de tema.
+
+### Palavras-chave
+
+- ajuste contraste dark mode
+- logo dark mode branding assets
+- ui moderna credilix acessos
+
+## 2026-04-07 - Bancos via cadastro manual (sem lista externa)
+
+- Removida integra??o com lista de bancos externa no frontend.
+- Criado recurso pr?prio de bancos por tenant:
+  - `POST /api/banks`
+  - `GET /api/banks`
+- Fluxo do campo Banco passou a espelhar Produto:
+  - selecionar banco existente;
+  - ou `+ Adicionar Banco` para cadastro manual.
+- Criada tabela `banks` no Supabase (`schema` + migration) com RLS para `service_role`.
+
+### Palavras-chave
+
+- cadastro manual bancos
+- banks endpoint credilix
+- banco novo ou existente select
+
+## 2026-04-07 - Responsividade com Bootstrap no m?dulo de comiss?o
+
+- Bootstrap adicionado no frontend (`bootstrap/dist/css/bootstrap.min.css`).
+- M?dulo `Tabela de Comiss?o` refatorado para grid `row`/`col-*` (mobile-first).
+- Formul?rio e listagem ajustados para quebra progressiva por breakpoint, evitando sobreposi??o.
+
+### Palavras-chave
+
+- bootstrap row col mobile first
+- tabela comissao responsiva
+- layout credilix bootstrap
+
+## 2026-04-08 - Excluir pasta de conte?dos com confirma??o
+
+- Adicionado ?cone de lixeira por pasta no m?dulo `Conte?dos`.
+- Ao clicar, sistema pede confirma??o antes de excluir.
+- Novo endpoint `DELETE /api/contents/folder` para remover conte?dos de uma pasta e subpastas.
+- Exclus?o respeita isolamento por `tenant_id` e permiss?o de edi??o de conte?dos.
+- Fluxo frontend atualiza lista de pastas e volta para a raiz quando a pasta ativa ? exclu?da.
+
+### Palavras-chave
+
+- excluir pasta conteudos
+- lixeira confirmacao
+- delete contents folder tenant
+
+## 2026-04-08 - Confirma??o de exclus?o estilizada (sem alerta nativo)
+
+- Fluxo de exclus?o de pasta no frontend trocado de `window.confirm` para modal visual pr?prio.
+- Modal segue identidade do sistema com fundo escuro, borda e bot?o de a??o destrutiva.
+- Inclusos controles de fechamento via `X` e `Cancelar`.
+
+### Palavras-chave
+
+- modal de confirmacao customizado
+- remover alerta navegador
+- excluir pasta ui credilix
+
+## 2026-04-08 - Bot?o Confirmar modal arquivo verde no dark mode
+
+- O tema escuro aplicava `body[data-theme="dark"] button[type="submit"]` (cinza) por cima do verde; adicionado override com maior especificidade em `.content-modal .content-modal__confirm`.
+
+## 2026-04-08 - Fix exclus?o de arquivo (mensagem Supabase + path Windows)
+
+- Erros do Supabase na exclus?o passam a vir como mensagem JSON clara.
+- Ordem: apagar linha em `contents` e depois `unlink` no disco; path validado no Windows sem falsos ?Arquivo inv?lido?.
+- UI mostra HTTP status se a API devolver HTML (ex.: rota antiga sem rein?cio).
+
+### Palavras-chave
+
+- delete content supabase error message
+- uploads path win32
+
+## 2026-04-08 - Stream de arquivo por ID + exclus?o de arquivo na pasta
+
+- Novo `GET /api/contents/:id/file` com `Content-Type` correto (PDF/PNG/JPEG) para uploads sem extens?o no disco.
+- Novo `DELETE /api/contents/:id` remove registro e ficheiro em `uploads/`.
+- UI: lixeira por arquivo com modal de confirma??o; abertura em nova aba via rota por ID.
+
+### Palavras-chave
+
+- stream conteudo por id mime inline
+- excluir arquivo conteudos modal
+
+## 2026-04-08 - Ajuste de grid desktop e painel interno de conte?dos
+
+- Corrigido o m?dulo `Conte?dos` no desktop para n?o herdar colunas indevidas do layout geral.
+- Card interno da pasta voltou a ocupar ?rea correta, consistente com Bootstrap.
+- Bot?es `Adicionar PDF` e `Adicionar Imagem` ajustados ao estilo visual roxo do tema.
+- Exibi??o de nome de arquivo corrigida para remover caminho absoluto em ambiente Windows.
+
+### Palavras-chave
+
+- conteudos desktop grid bootstrap
+- card interno pasta largura
+- nome arquivo sem caminho completo
+
+## 2026-04-08 - Conte?dos modo claro: painel ao abrir pasta
+
+- Painel interno (`.content-inside-panel`) deixou de usar bloco escuro no tema claro: cart?o claro com texto e bot?es leg?veis.
+- T?tulo **Conte?dos** no claro usa `var(--brand-fg)` em vez de branco fixo.
+- Lista de ficheiros: links e ?cones com roxo escuro; eliminar com vermelho leg?vel sobre fundo claro.
+
+### Palavras-chave
+
+- content-inside-panel light theme
+- conteudos contraste modo claro
+
+## 2026-04-08 - Tabela de Comiss?o: card sem ?Cria??o de Tabela? + layout compacto
+
+- Removido o t?tulo interno do card; mant?m-se o t?tulo da p?gina **Tabela de Comiss?o**.
+- Classe `commission-table-create-form`: menos espa?o entre campos e no topo do card; bot?o **Incluir** com padding e tipografia mais baixos.
+- Linha de campos: `gx-2 gy-1` em vez de `g-2`.
+
+### Palavras-chave
+
+- commission-table-create-form
+- tabela comiss?o formul?rio compacto
+
+## 2026-04-10 - Aprovar usuario pendente para liberar login
+
+- Confirmado fluxo de seguranca: usuario recem-cadastrado fica `PENDING_APPROVAL` e nao pode logar ate aprovacao.
+- Backend ja possuia `POST /api/users/:id/approve` para transicao de status para `ACTIVE`.
+- Frontend atualizado com acao explicita de **Aprovar e ativar** na tabela de usuarios quando status estiver pendente.
+- Novo modal de confirmacao de aprovacao e feedback de sucesso no painel.
+- Estilo do botao de aprovacao adicionado para tema claro/escuro.
+- Regra visual de status ajustada: `ACTIVE` agora exibe "Ativo" mesmo sem `firstAccessVerifiedAt`.
+
+### Palavras-chave
+
+- aprovar usuario pendente
+- pending approval
+- users approve endpoint
+- liberar login apos cadastro
+
+## 2026-04-10 - Perfil VENDEDOR em leitura (menu restrito)
+
+- Menu lateral passou a ocultar `Usuarios` para perfil sem permissao de gestao.
+- `VENDEDOR` permanece com acesso a `Tabela de Comissao` e `Conteudos`.
+- Mantido comportamento de somente leitura quando nao ha permissoes de edicao.
+- Se o modulo atual nao for permitido, app redireciona para o primeiro modulo autorizado.
+
+### Palavras-chave
+
+- vendedor somente leitura
+- menu por permissao
+- ocultar modulo usuarios
+- fallback modulo permitido
+
+## 2026-04-10 - Vendedor sem card de criacao na comissao
+
+- Formulario/card de criacao de tabela foi removido para perfil sem permissao de edicao.
+- Em modo leitura, permanece apenas listagem e filtros de `Tabela de Comissao`.
+- Layout da listagem usa largura total quando o card de criacao nao existe.
+
+### Palavras-chave
+
+- remover card incluir vendedor
+- tabela comissao readonly
+- canEditCommissionTables false
+
+## 2026-04-10 - Conteudos exibem nome informado no upload
+
+- Campo `display_name` adicionado ao fluxo de conteudos.
+- Upload (`POST /api/contents`) passa a receber/salvar nome amigavel.
+- Listagem (`GET /api/contents`) retorna `displayName`.
+- Frontend prioriza `displayName` para renderizar nome do arquivo na tela de Conteudos.
+- Migration criada para `public.contents.display_name`.
+
+### Palavras-chave
+
+- display_name contents
+- nome amigavel arquivo
+- upload conteudos nome exibicao
+
+## 2026-04-10 - Conteudos (Master): botao adicionar pasta junto aos uploads
+
+- No painel interno de pasta, adicionado `Adicionar Pasta` ao lado de `Adicionar PDF` e `Adicionar Imagem`.
+- Ajuste aplicado tanto para pasta com arquivos quanto para estado vazio.
+- Fluxo de criacao de subpasta permanece no mesmo modal existente (`openFolderModal`).
+
+### Palavras-chave
+
+- adicionar pasta ao lado adicionar pdf
+- subpastas conteudos master
+- content-inside-panel actions
+
+## 2026-04-10 - Subpasta visivel dentro da pasta atual
+
+- Corrigida visibilidade de subpastas no contexto interno de Conteudos.
+- Classe de ocultacao da grade de pastas foi removida quando ha `currentFolderPath`.
+- Agora, ao criar pasta dentro de pasta, ela aparece imediatamente na listagem do nivel atual.
+
+### Palavras-chave
+
+- subpasta visivel
+- content-folders sem hidden
+- pasta dentro de pasta conteudos
+
+## 2026-04-10 - Subpastas no mesmo card da pasta atual
+
+- Em pasta aberta, subpastas agora renderizam dentro do mesmo card (`content-inside-panel`), abaixo da lista de arquivos.
+- A grade de pastas da raiz permanece apenas no contexto raiz.
+
+### Palavras-chave
+
+- subpasta abaixo dos arquivos
+- mesmo card conteudos
+- pasta aberta currentFolderPath
+
+## 2026-04-10 - Botao voltar por nivel em Conteudos
+
+- Adicionado botao discreto `Voltar` no painel interno de pastas.
+- Funciona por nivel: sobe um diretorio por clique.
+- Disponivel tanto em pasta com arquivos quanto em pasta vazia.
+
+### Palavras-chave
+
+- voltar pasta anterior
+- hierarquia subpastas
+- currentFolderPath parent
+
+## 2026-04-10 - Acoes de edicao/exclusao em tabelas de comissao
+
+- Adicionadas acoes por linha da tabela: editar e excluir.
+- Adicionadas acoes no card pai (produto): editar nome do produto e excluir todas as tabelas daquele produto.
+- Backend recebeu rotas `PATCH/DELETE` para `commission-tables` e `PATCH` para `products`.
+- Permissao de alteracao mantida em `assertCanEditCommissionTables`.
+
+### Palavras-chave
+
+- commission table edit delete
+- delete by product
+- product card actions
+
+## 2026-04-10 - Confirmacao de exclusao de tabelas via modal interno
+
+- Fluxos de exclusao de tabelas sairam de `window.confirm` para modal interno.
+- Mesmo estilo visual do modal de exclusao de conteudos (`content-modal--confirm-delete`).
+- Aplicado para:
+  - tabela individual;
+  - exclusao de todas as tabelas do produto.
+
+### Palavras-chave
+
+- modal exclusao tabela
+- sem alerta nativo navegador
+- confirmacao interna produto
+
+## 2026-04-10 - Atualize tudo: backup, build, gitignore, commit
+
+- Executada rotina **atualize tudo**: backup `C:\Scripts\backup-d-para-e.ps1` (espelho para `E:\`), `npm run build` + `npm run build:web` em `D:\Credilix-acessos`.
+- Criado `.gitignore` na raiz do repo para excluir `.env`, `node_modules/`, `dist/`, `web/dist/`, `uploads/`, `data/`.
+- Log de handoff: `doc/LOG-2026-04-10__200500__chore-atualize-tudo-retomar-trabalhos.md`.
+
+### Palavras-chave para pesquisa futura
+
+- atualize tudo credilix-acessos
+- backup D para E robocopy
+- gitignore dist uploads data
+- retomar trabalhos main acesos-redlix

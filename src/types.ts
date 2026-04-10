@@ -1,12 +1,13 @@
 export type UserRole = "MASTER" | "LIDER" | "VENDEDOR" | "SUPORTE";
 
-export type UserStatus = "INVITED" | "PENDING_APPROVAL" | "ACTIVE" | "BLOCKED";
+export type UserStatus = "INVITED" | "PENDING_APPROVAL" | "PENDING" | "ACTIVE" | "INACTIVE" | "BLOCKED";
 
-export type ContentType = "IMAGE" | "PDF" | "COMMISSION_TABLE" | "OTHER";
+export type ContentType = "PDF" | "PNG" | "JPEG" | "IMAGE" | "COMMISSION_TABLE" | "OTHER";
 
 export interface TenantUser {
   id: string;
   tenantId: string;
+  systemCode?: string;
   fullName: string;
   email: string;
   role: UserRole;
@@ -23,19 +24,38 @@ export interface TenantUser {
     rg: string;
     birthDate: string;
     address: string;
+    fatherName?: string;
+    motherName?: string;
+    zipCode?: string;
+    street?: string;
+    neighborhood?: string;
+    city?: string;
+    state?: string;
+    addressNumber?: string;
+    addressComplement?: string;
   };
   documents?: {
     identityPath: string;
+    identityBackPath?: string;
     addressProofPath: string;
   };
   verificationCode?: string;
   firstAccessVerifiedAt?: string;
   resetCode?: string;
+  statusReason?: string;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface Product {
+  id: string;
+  tenantId: string;
+  name: string;
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface Bank {
   id: string;
   tenantId: string;
   name: string;
@@ -60,6 +80,7 @@ export interface ContentItem {
   id: string;
   tenantId: string;
   title: string;
+  displayName?: string;
   type: ContentType;
   productId?: string;
   filePath: string;
@@ -70,6 +91,7 @@ export interface ContentItem {
 export interface DatabaseState {
   users: TenantUser[];
   products: Product[];
+  banks: Bank[];
   commissionTables: CommissionTable[];
   contents: ContentItem[];
 }

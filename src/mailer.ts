@@ -63,6 +63,22 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
+/** E-mail HTML do convite com botão “Validar Usuário”. */
+export function buildInviteEmailHtml(opts: { inviteLink: string; appName: string; primaryColor?: string }): string {
+  const { inviteLink, appName } = opts;
+  const primary = opts.primaryColor?.trim() || "#86209A";
+  const safeLink = escapeHtml(inviteLink);
+  const safeName = escapeHtml(appName);
+  return `<!DOCTYPE html><html><body style="font-family:system-ui,-apple-system,sans-serif;line-height:1.5;color:#2D1F35;margin:16px">
+<p>Olá,</p>
+<p>Você foi convidado para acessar o painel <strong>${safeName}</strong>.</p>
+<p>Clique no botão abaixo para validar seu cadastro (link válido por 7 dias):</p>
+<p><a href="${safeLink}" style="display:inline-block;padding:12px 24px;background:${escapeHtml(primary)};color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Validar Usuário</a></p>
+<p style="font-size:14px;color:#666">Se o botão não funcionar, copie e cole este endereço no navegador:<br/><span style="word-break:break-all">${safeLink}</span></p>
+<p style="font-size:14px;color:#666">Se você não esperava este e-mail, ignore.</p>
+</body></html>`;
+}
+
 export async function trySendMail(input: SendMailInput): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
     await sendTransactionalEmail(input);

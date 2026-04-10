@@ -1,5 +1,23 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
+import {
+  CheckCircle2,
+  FileImage,
+  FileText,
+  LogOut,
+  Menu,
+  PanelLeftClose,
+  Pencil,
+  Percent,
+  Plus,
+  RefreshCw,
+  RotateCcw,
+  SunMoon,
+  Trash2,
+  Users,
+  XCircle,
+  X,
+} from "lucide-react";
 import {
   AtivarFlow,
   ConviteFlow,
@@ -45,7 +63,10 @@ type SessionUser = {
 
 const SESSION_STORAGE_KEY = "credilix_session";
 const THEME_STORAGE_KEY = "credilix_theme";
-const DARK_LOGO_URL = "file:///D:/Site%20Credilix/dist/logo-credilix-light.png";
+const BANKS_API_UNAVAILABLE_KEY = "credilix_banks_api_unavailable";
+const CONTENT_FOLDERS_STORAGE_KEY = "credilix_content_folders";
+const CONTENT_FILE_NAMES_STORAGE_KEY = "credilix_content_file_names";
+const DARK_LOGO_URL = "/branding-assets/logo-credilix-light.png";
 
 function readStoredToken(): string {
   try {
@@ -69,12 +90,69 @@ function readStoredTheme(): "light" | "dark" {
   }
 }
 
+function readBanksApiUnavailable(): boolean {
+  try {
+    return localStorage.getItem(BANKS_API_UNAVAILABLE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function readStoredContentFolders(): string[] {
+  try {
+    const raw = localStorage.getItem(CONTENT_FOLDERS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item): item is string => typeof item === "string");
+  } catch {
+    return [];
+  }
+}
+
+function readStoredContentFileNames(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(CONTENT_FILE_NAMES_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {};
+    }
+    return parsed as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
+
 type User = {
   id: string;
+  systemCode?: string;
   fullName: string;
   email: string;
   role: string;
   status: string;
+  firstAccessVerifiedAt?: string;
+  profile?: {
+    cpf?: string;
+    rg?: string;
+    birthDate?: string;
+    address?: string;
+    fatherName?: string;
+    motherName?: string;
+    zipCode?: string;
+    street?: string;
+    neighborhood?: string;
+    city?: string;
+    state?: string;
+    addressNumber?: string;
+    addressComplement?: string;
+  };
+  documents?: {
+    identityPath?: string;
+    identityBackPath?: string;
+    addressProofPath?: string;
+  };
+  statusReason?: string;
   canManageUsers?: boolean;
   permViewContents?: boolean;
   permCreateManagers?: boolean;
@@ -83,15 +161,27 @@ type User = {
   permContents?: boolean;
 };
 
-function formatUserPermissionLabels(u: User): string {
-  const parts: string[] = [];
-  if (u.canManageUsers) parts.push("Autorizar/Ativar");
-  if (u.permViewContents) parts.push("Acessar conteúdo");
-  if (u.permCreateManagers) parts.push("Gestores");
-  if (u.permCreateSellers) parts.push("Vendedores");
-  if (u.permCommissionTables) parts.push("Tabelas");
-  if (u.permContents) parts.push("Conteúdos");
-  return parts.length > 0 ? parts.join(", ") : "—";
+function formatUserLifecycleStatus(u: User): "Ativo" | "Pendente" | "Inativo" {
+  const status = (u.status ?? "").toUpperCase();
+  if (status === "INACTIVE" || status === "BLOCKED") return "Inativo";
+  if (status === "ACTIVE") return "Ativo";
+  return "Pendente";
+}
+
+function userStatusClassName(u: User): "status--active" | "status--inactive" | "status--pending" {
+  const status = formatUserLifecycleStatus(u);
+  if (status === "Ativo") return "status--active";
+  if (status === "Inativo") return "status--inactive";
+  return "status--pending";
+}
+
+const INVITED_PENDING_LIST_NAME = "(Aguardando Validação)";
+
+function displayNameInUserList(user: User): string {
+  if ((user.status ?? "").toUpperCase() === "INVITED") {
+    return INVITED_PENDING_LIST_NAME;
+  }
+  return user.fullName;
 }
 
 type InviteRolePreset = "VENDEDOR" | "SUPORTE" | "LIDER";
@@ -132,20 +222,17 @@ const ROLE_PRESETS: Record<InviteRolePreset, InvitePermissionState> = {
   },
 };
 
-function NavCollapseIcon({ pointsLeft }: { pointsLeft: boolean }) {
-  return (
-    <svg className="shell-nav__chevron" viewBox="0 0 24 24" width="20" height="20" aria-hidden>
-      <path
-        d={pointsLeft ? "M14 7l-5 5 5 5" : "M10 7l5 5-5 5"}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        vectorEffect="non-scaling-stroke"
-      />
-    </svg>
-  );
+const RAIL_ICON_PROPS = { size: 20, strokeWidth: 1.75 } as const;
+
+function RailModuleIcon({ module }: { module: ModuleKey }) {
+  switch (module) {
+    case "users":
+      return <Users {...RAIL_ICON_PROPS} aria-hidden />;
+    case "products":
+      return <Percent {...RAIL_ICON_PROPS} aria-hidden />;
+    case "contents":
+      return <FileText {...RAIL_ICON_PROPS} aria-hidden />;
+  }
 }
 
 type Product = {
@@ -154,6 +241,12 @@ type Product = {
 };
 
 const NEW_PRODUCT_OPTION = "__new__";
+const NEW_BANK_OPTION = "__new_bank__";
+
+type Bank = {
+  id: string;
+  name: string;
+};
 
 type CommissionTable = {
   id: string;
@@ -168,28 +261,99 @@ type CommissionTable = {
 type Content = {
   id: string;
   title: string;
+  displayName?: string;
   type: string;
   filePath: string;
 };
 
-type BankApiItem = {
-  code: number | null;
-  fullName?: string;
-  name?: string;
-};
+type UploadContentType = "PDF" | "PNG" | "JPEG";
 
-const FALLBACK_BANKS = [
-  "001 - Banco do Brasil S.A.",
-  "033 - Banco Santander (Brasil) S.A.",
-  "041 - Banco do Estado do Rio Grande do Sul S.A.",
-  "104 - Caixa Economica Federal",
-  "212 - Banco Original S.A.",
-  "237 - Banco Bradesco S.A.",
-  "260 - Nu Pagamentos S.A.",
-  "290 - PagSeguro Internet Instituicao de Pagamento S.A.",
-  "341 - Itau Unibanco S.A.",
-  "756 - Banco Cooperativo Sicoob S.A.",
-];
+function normalizeFolderPath(input: string): string {
+  return input
+    .split("/")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join("/");
+}
+
+function fileBaseName(fileName: string): string {
+  const dot = fileName.lastIndexOf(".");
+  return dot > 0 ? fileName.slice(0, dot) : fileName;
+}
+
+function formatBirthDateToBr(value: string): string {
+  const raw = value.trim();
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) {
+    const [, yyyy, mm, dd] = iso;
+    return `${dd}/${mm}/${yyyy}`;
+  }
+  const br = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (br) {
+    return raw;
+  }
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 8) {
+    // Legado sem separador: prioriza YYYYMMDD quando começa por século.
+    if (digits.startsWith("19") || digits.startsWith("20")) {
+      return `${digits.slice(6, 8)}/${digits.slice(4, 6)}/${digits.slice(0, 4)}`;
+    }
+    return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4, 8)}`;
+  }
+  return raw;
+}
+
+function normalizeBirthDateForApi(input: string): string {
+  const raw = input.trim();
+  if (!raw) {
+    throw new Error("Data de nascimento é obrigatória.");
+  }
+
+  // Aceita qualquer entrada com 8 dígitos úteis (com ou sem separadores)
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 8) {
+    // Se vier como YYYYMMDD, converte corretamente para DD/MM/AAAA.
+    if (digits.startsWith("19") || digits.startsWith("20")) {
+      return `${digits.slice(6, 8)}/${digits.slice(4, 6)}/${digits.slice(0, 4)}`;
+    }
+    return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4, 8)}`;
+  }
+
+  // Aceita já no formato esperado
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(raw)) {
+    return raw;
+  }
+
+  // Compatibilidade com ISO digitado manualmente
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) {
+    const [, yyyy, mm, dd] = iso;
+    return `${dd}/${mm}/${yyyy}`;
+  }
+
+  throw new Error("Data de nascimento deve estar no formato DD/MM/AAAA.");
+}
+
+function maskBirthDateInput(input: string): string {
+  const digits = input.replace(/\D/g, "").slice(0, 8);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+}
+
+function maskCpfInput(input: string): string {
+  const digits = input.replace(/\D/g, "").slice(0, 11);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
+  if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
+  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+}
+
+function maskCepInput(input: string): string {
+  const digits = input.replace(/\D/g, "").slice(0, 8);
+  if (digits.length <= 5) return digits;
+  return `${digits.slice(0, 5)}-${digits.slice(5)}`;
+}
 
 /** Base do servidor (vazio = mesma origem). Rotas REST ficam em `/api/*`. */
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "";
@@ -213,6 +377,8 @@ function App() {
 
   const [users, setUsers] = useState<User[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [banks, setBanks] = useState<Bank[]>([]);
+  const [banksApiUnavailable, setBanksApiUnavailable] = useState(() => readBanksApiUnavailable());
   const [tables, setTables] = useState<CommissionTable[]>([]);
   const [contents, setContents] = useState<Content[]>([]);
 
@@ -229,6 +395,30 @@ function App() {
   const [permCreateSellers, setPermCreateSellers] = useState(false);
   const [permCommissionTables, setPermCommissionTables] = useState(false);
   const [permContents, setPermContents] = useState(false);
+  const [pendingUserAction, setPendingUserAction] = useState<"APPROVE" | "INACTIVE" | "BLOCKED" | "RESET" | "EDIT" | "">(
+    "",
+  );
+  const [pendingUserActionTarget, setPendingUserActionTarget] = useState<User | null>(null);
+  const [pendingUserActionReason, setPendingUserActionReason] = useState("");
+  const [userActionLoading, setUserActionLoading] = useState(false);
+  const [editUserDraft, setEditUserDraft] = useState({
+    fullName: "",
+    email: "",
+    role: "VENDEDOR",
+    cpf: "",
+    rg: "",
+    birthDate: "",
+    address: "",
+    fatherName: "",
+    motherName: "",
+    zipCode: "",
+    street: "",
+    neighborhood: "",
+    city: "",
+    state: "",
+    addressNumber: "",
+    addressComplement: "",
+  });
 
   const [productName, setProductName] = useState("");
   const [selectedProductValue, setSelectedProductValue] = useState(NEW_PRODUCT_OPTION);
@@ -237,15 +427,32 @@ function App() {
   const [tableName, setTableName] = useState("");
   const [tableDeadline, setTableDeadline] = useState("");
   const [tableCommission, setTableCommission] = useState("1");
-  const [tableBank, setTableBank] = useState("");
+  const [bankName, setBankName] = useState("");
+  const [selectedBankValue, setSelectedBankValue] = useState(NEW_BANK_OPTION);
+  const [isTypingNewBank, setIsTypingNewBank] = useState(false);
   const [tableObservation, setTableObservation] = useState("");
-  const [bankOptions, setBankOptions] = useState<string[]>(FALLBACK_BANKS);
-  const [bankSearch, setBankSearch] = useState("");
+  const [filterProductId, setFilterProductId] = useState("");
+  const [filterBankName, setFilterBankName] = useState("");
 
-  const [contentTitle, setContentTitle] = useState("");
-  const [contentType, setContentType] = useState("PDF");
-  const [contentFile, setContentFile] = useState<File | null>(null);
+  const [manualFolders, setManualFolders] = useState<string[]>(() => readStoredContentFolders());
+  const [isFolderModalOpen, setIsFolderModalOpen] = useState(false);
+  const [isFileModalOpen, setIsFileModalOpen] = useState(false);
+  const [pendingDeleteFolderPath, setPendingDeleteFolderPath] = useState("");
+  const [pendingDeleteContentId, setPendingDeleteContentId] = useState("");
+  const [pendingDeleteContentLabel, setPendingDeleteContentLabel] = useState("");
+  const [pendingDeleteCommissionTableId, setPendingDeleteCommissionTableId] = useState("");
+  const [pendingDeleteCommissionTableLabel, setPendingDeleteCommissionTableLabel] = useState("");
+  const [pendingDeleteProductTablesId, setPendingDeleteProductTablesId] = useState("");
+  const [pendingDeleteProductTablesLabel, setPendingDeleteProductTablesLabel] = useState("");
+  const [newFolderName, setNewFolderName] = useState("");
+  const [uploadDisplayName, setUploadDisplayName] = useState("");
+  const [pendingUploadFile, setPendingUploadFile] = useState<File | null>(null);
+  const [pendingUploadType, setPendingUploadType] = useState<UploadContentType | null>(null);
+  const [currentFolderPath, setCurrentFolderPath] = useState("");
+  const [contentFileNames, setContentFileNames] = useState<Record<string, string>>(() => readStoredContentFileNames());
   const [theme, setTheme] = useState<"light" | "dark">(() => readStoredTheme());
+  const pdfInputRef = useRef<HTMLInputElement | null>(null);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     void loadBranding();
@@ -261,32 +468,20 @@ function App() {
   }, [theme]);
 
   useEffect(() => {
-    const controller = new AbortController();
-    const loadBanks = async () => {
-      try {
-        const response = await fetch("https://brasilapi.com.br/api/banks/v1", { signal: controller.signal });
-        if (!response.ok) {
-          throw new Error("Falha ao carregar bancos.");
-        }
-        const data = (await response.json()) as BankApiItem[];
-        const normalized = data
-          .filter((item) => item.code !== null && (item.fullName || item.name))
-          .map((item) => {
-            const code = String(item.code).padStart(3, "0");
-            const name = (item.fullName ?? item.name ?? "").trim();
-            return `${code} - ${name}`;
-          })
-          .sort((a, b) => a.localeCompare(b, "pt-BR"));
-        if (normalized.length > 0) {
-          setBankOptions(normalized);
-        }
-      } catch {
-        setBankOptions((prev) => (prev.length > 0 ? prev : FALLBACK_BANKS));
-      }
-    };
-    void loadBanks();
-    return () => controller.abort();
-  }, []);
+    try {
+      localStorage.setItem(CONTENT_FOLDERS_STORAGE_KEY, JSON.stringify(manualFolders));
+    } catch {
+      /* ignore */
+    }
+  }, [manualFolders]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(CONTENT_FILE_NAMES_STORAGE_KEY, JSON.stringify(contentFileNames));
+    } catch {
+      /* ignore */
+    }
+  }, [contentFileNames]);
 
   useEffect(() => {
     if (!token) {
@@ -320,9 +515,26 @@ function App() {
       return body as T;
     };
 
-    const [u, p, t, c] = await Promise.allSettled([
+    const loadBanksCompat = async (): Promise<{ items: Bank[]; unavailable: boolean }> => {
+      if (banksApiUnavailable) {
+        return { items: [], unavailable: true };
+      }
+      const response = await fetch(apiUrl("/banks"), { headers });
+      if (response.status === 404) {
+        return { items: [], unavailable: true };
+      }
+      const body = (await response.json().catch(() => ({}))) as { message?: string } | Bank[];
+      if (!response.ok) {
+        const msg = typeof body === "object" && body && "message" in body ? body.message : undefined;
+        throw new Error(msg ?? "Falha ao carregar bancos.");
+      }
+      return { items: Array.isArray(body) ? body : [], unavailable: false };
+    };
+
+    const [u, p, b, t, c] = await Promise.allSettled([
       loadJson<User[]>("/users", "usuários"),
       loadJson<Product[]>("/products", "produtos"),
+      loadBanksCompat(),
       loadJson<CommissionTable[]>("/commission-tables", "tabelas"),
       loadJson<Content[]>("/contents", "conteúdos"),
     ]);
@@ -339,6 +551,23 @@ function App() {
     } else {
       failures.push(p.reason instanceof Error ? p.reason.message : "produtos");
     }
+    if (b.status === "fulfilled") {
+      setBanks(Array.isArray(b.value.items) ? b.value.items : []);
+      setBanksApiUnavailable(b.value.unavailable);
+      try {
+        localStorage.setItem(BANKS_API_UNAVAILABLE_KEY, b.value.unavailable ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      if (b.value.unavailable) {
+        setIsTypingNewBank(true);
+        setSelectedBankValue("");
+      }
+    } else {
+      // Não bloquear a tela nem poluir o banner inicial por falha de bancos.
+      setBanks([]);
+      setBanksApiUnavailable(false);
+    }
     if (t.status === "fulfilled") {
       setTables(Array.isArray(t.value) ? t.value : []);
     } else {
@@ -353,7 +582,7 @@ function App() {
     if (failures.length > 0) {
       setError(failures.join(" · "));
     }
-  }, [token]);
+  }, [token, banksApiUnavailable]);
 
   useEffect(() => {
     if (!token) {
@@ -423,26 +652,24 @@ function App() {
     }
   }, [isTypingNewProduct, selectedProductValue, products]);
 
+  useEffect(() => {
+    if (isTypingNewBank) {
+      return;
+    }
+    if (!selectedBankValue) return;
+    const exists = banks.some((bank) => bank.id === selectedBankValue);
+    if (!exists) {
+      setSelectedBankValue("");
+    }
+  }, [isTypingNewBank, selectedBankValue, banks]);
+
   const isMaster = Boolean(session && session.role.toUpperCase() === "MASTER");
   const canCreateUsers = Boolean(session && (isMaster || session.canManageUsers));
   const canEditCommissionTables = Boolean(session && (isMaster || session.permCommissionTables));
+  const canViewCommissionTables = Boolean(session);
   const canViewContents = Boolean(session && (isMaster || session.permViewContents || session.permContents));
   const canEditContents = Boolean(session && (isMaster || session.permContents));
-  const filteredBankOptions = useMemo(() => {
-    const term = bankSearch.trim().toLocaleLowerCase("pt-BR");
-    if (!term) {
-      return bankOptions;
-    }
-    const startsWithCode = bankOptions.filter((item) =>
-      item.toLocaleLowerCase("pt-BR").startsWith(term),
-    );
-    const includesTerm = bankOptions.filter((item) => {
-      const value = item.toLocaleLowerCase("pt-BR");
-      return !value.startsWith(term) && value.includes(term);
-    });
-    return [...startsWithCode, ...includesTerm];
-  }, [bankOptions, bankSearch]);
-  const activeLogoUrl = theme === "dark" ? DARK_LOGO_URL : branding?.logoUrl;
+  const activeLogoUrl = theme === "dark" ? DARK_LOGO_URL : branding?.logoUrl ?? DARK_LOGO_URL;
 
   const applyRolePreset = useCallback((role: InviteRolePreset) => {
     const preset = ROLE_PRESETS[role];
@@ -454,15 +681,6 @@ function App() {
     setPermContents(preset.permContents);
   }, []);
 
-  useEffect(() => {
-    if (!session) {
-      return;
-    }
-    if (activeModule === "contents" && !canViewContents) {
-      setActiveModule("users");
-    }
-  }, [session, activeModule, canViewContents]);
-
   const navItems = useMemo(() => {
     const all: { key: ModuleKey; label: string; short: string }[] = [
       { key: "users", label: "Usuários", short: "Usu." },
@@ -473,15 +691,158 @@ function App() {
       if (isMaster) {
         return true;
       }
+      if (item.key === "users") {
+        return canCreateUsers;
+      }
+      if (item.key === "products") {
+        return canViewCommissionTables;
+      }
       if (item.key === "contents") {
         return canViewContents;
       }
       return true;
     });
-  }, [isMaster, canViewContents]);
+  }, [isMaster, canCreateUsers, canViewCommissionTables, canViewContents]);
+
+  useEffect(() => {
+    if (!session) {
+      return;
+    }
+    if (navItems.length === 0) {
+      return;
+    }
+    const isCurrentAllowed = navItems.some((item) => item.key === activeModule);
+    if (!isCurrentAllowed) {
+      setActiveModule(navItems[0].key);
+    }
+  }, [session, activeModule, navItems]);
+
+  const filterBankOptions = useMemo(() => {
+    const values = new Set<string>();
+    for (const table of tables) {
+      const name = table.bank.trim();
+      if (name) {
+        values.add(name);
+      }
+    }
+    return Array.from(values).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [tables]);
+
+  const filteredTables = useMemo(
+    () =>
+      tables.filter((table) => {
+        if (filterProductId && table.productId !== filterProductId) {
+          return false;
+        }
+        if (filterBankName && table.bank !== filterBankName) {
+          return false;
+        }
+        return true;
+      }),
+    [tables, filterProductId, filterBankName],
+  );
+
+  const groupedTablesByProduct = useMemo(() => {
+    const rowsByProduct = new Map<string, CommissionTable[]>();
+    for (const table of filteredTables) {
+      const list = rowsByProduct.get(table.productId);
+      if (list) {
+        list.push(table);
+      } else {
+        rowsByProduct.set(table.productId, [table]);
+      }
+    }
+    return products
+      .map((product) => ({ product, tables: rowsByProduct.get(product.id) ?? [] }))
+      .filter((entry) => entry.tables.length > 0);
+  }, [products, filteredTables]);
+
+  const folderPaths = useMemo(() => {
+    const paths = new Set<string>();
+    for (const item of contents) {
+      const normalized = normalizeFolderPath(item.title);
+      if (!normalized) continue;
+      const parts = normalized.split("/");
+      let acc = "";
+      for (const part of parts) {
+        acc = acc ? `${acc}/${part}` : part;
+        paths.add(acc);
+      }
+    }
+    for (const path of manualFolders) {
+      const normalized = normalizeFolderPath(path);
+      if (!normalized) continue;
+      const parts = normalized.split("/");
+      let acc = "";
+      for (const part of parts) {
+        acc = acc ? `${acc}/${part}` : part;
+        paths.add(acc);
+      }
+    }
+    return Array.from(paths).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [contents, manualFolders]);
+
+  const folderChildren = useMemo(() => {
+    const byParent = new Map<string, string[]>();
+    for (const path of folderPaths) {
+      const idx = path.lastIndexOf("/");
+      const parent = idx >= 0 ? path.slice(0, idx) : "";
+      const list = byParent.get(parent) ?? [];
+      list.push(path);
+      byParent.set(parent, list);
+    }
+    for (const [parent, list] of byParent.entries()) {
+      byParent.set(parent, list.sort((a, b) => a.localeCompare(b, "pt-BR")));
+    }
+    return byParent;
+  }, [folderPaths]);
+
+  /** Arquivos gravados exatamente nesta pasta (para lista e contagem nas telas). */
+  const folderDirectFileCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const folder of folderPaths) {
+      const count = contents.filter((item) => normalizeFolderPath(item.title) === folder).length;
+      counts.set(folder, count);
+    }
+    return counts;
+  }, [contents, folderPaths]);
+
+  const currentFolderChildren = useMemo(
+    () => folderChildren.get(currentFolderPath) ?? [],
+    [folderChildren, currentFolderPath],
+  );
+
+  const currentFolderFiles = useMemo(
+    () => contents.filter((item) => normalizeFolderPath(item.title) === currentFolderPath),
+    [contents, currentFolderPath],
+  );
+
+  useEffect(() => {
+    if (currentFolderPath && !folderPaths.includes(currentFolderPath)) {
+      setCurrentFolderPath("");
+    }
+  }, [currentFolderPath, folderPaths]);
+
+  const isEmptyRootContents = !currentFolderPath && folderPaths.length === 0;
+  const canGoBackFolder = currentFolderPath.length > 0;
+
+  function goBackFolder(): void {
+    if (!currentFolderPath) return;
+    const idx = currentFolderPath.lastIndexOf("/");
+    setCurrentFolderPath(idx >= 0 ? currentFolderPath.slice(0, idx) : "");
+  }
+
+  function openFolderModal(): void {
+    setNewFolderName("");
+    setIsFolderModalOpen(true);
+  }
 
   function goToModule(module: ModuleKey): void {
     setActiveModule(module);
+    if (module === "contents") {
+      // Sempre volta para a raiz ao abrir/reclicar no módulo Conteúdos.
+      setCurrentFolderPath("");
+    }
     setNavOpen(false);
   }
 
@@ -569,23 +930,213 @@ function App() {
       });
       const body = (await response.json()) as {
         message?: string;
-        emailSent?: boolean;
-        emailError?: string;
       };
       if (!response.ok) {
         throw new Error(body.message ?? "Não foi possível criar usuário.");
       }
-      if (body.emailSent === false && body.emailError) {
-        setPanelNotice(`Usuário criado, mas o e-mail não foi enviado: ${body.emailError}`);
-      } else {
-        setPanelNotice("Usuário criado e convite enviado por e-mail.");
-      }
+      setPanelNotice("Usuário criado e convite enviado por e-mail.");
       setInviteEmail("");
       setInviteRole("VENDEDOR");
       applyRolePreset("VENDEDOR");
       await refreshAll();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Não foi possível criar usuário.");
+    }
+  }
+
+  function openUserAction(action: "APPROVE" | "INACTIVE" | "BLOCKED" | "RESET" | "EDIT", user: User): void {
+    setPendingUserAction(action);
+    setPendingUserActionTarget(user);
+    setPendingUserActionReason("");
+    if (action === "EDIT") {
+      setEditUserDraft({
+        fullName: (user.status ?? "").toUpperCase() === "INVITED" ? "" : user.fullName ?? "",
+        email: user.email ?? "",
+        role: user.role ?? "VENDEDOR",
+        cpf: user.profile?.cpf ?? "",
+        rg: user.profile?.rg ?? "",
+        birthDate: formatBirthDateToBr(user.profile?.birthDate ?? ""),
+        address: user.profile?.address ?? "",
+        fatherName: user.profile?.fatherName ?? "",
+        motherName: user.profile?.motherName ?? "",
+        zipCode: user.profile?.zipCode ?? "",
+        street: user.profile?.street ?? "",
+        neighborhood: user.profile?.neighborhood ?? "",
+        city: user.profile?.city ?? "",
+        state: user.profile?.state ?? "",
+        addressNumber: user.profile?.addressNumber ?? "",
+        addressComplement: user.profile?.addressComplement ?? "",
+      });
+    }
+  }
+
+  async function openUserUploadedFile(storedPath: string | undefined, label: string): Promise<void> {
+    if (!storedPath?.trim() || !token) {
+      return;
+    }
+    const name = storedPath.split(/[\\/]/).pop();
+    if (!name) {
+      return;
+    }
+    try {
+      const r = await fetch(apiUrl(`/files/${encodeURIComponent(name)}`), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!r.ok) {
+        throw new Error("fetch failed");
+      }
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank", "noopener,noreferrer");
+      window.setTimeout(() => URL.revokeObjectURL(url), 120_000);
+    } catch {
+      window.alert(`Não foi possível abrir: ${label}`);
+    }
+  }
+
+  function closeUserActionModal(): void {
+    setPendingUserAction("");
+    setPendingUserActionTarget(null);
+    setPendingUserActionReason("");
+    setUserActionLoading(false);
+  }
+
+  async function handleConfirmUserStatusAction(): Promise<void> {
+    if (!pendingUserActionTarget || !pendingUserAction) return;
+    if (pendingUserAction !== "INACTIVE" && pendingUserAction !== "BLOCKED") return;
+    const reason = pendingUserActionReason.trim();
+    if (!reason) {
+      setError("Informe o motivo da ação.");
+      return;
+    }
+    setUserActionLoading(true);
+    setError("");
+    try {
+      const response = await fetch(apiUrl(`/users/${encodeURIComponent(pendingUserActionTarget.id)}/status`), {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          status: pendingUserAction,
+          reason,
+        }),
+      });
+      const body = (await response.json().catch(() => ({}))) as { message?: string };
+      if (!response.ok) {
+        throw new Error(body.message ?? "Não foi possível atualizar o status.");
+      }
+      await refreshAll();
+      closeUserActionModal();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Erro ao atualizar status.");
+      setUserActionLoading(false);
+    }
+  }
+
+  async function handleResetUserAccess(): Promise<void> {
+    if (!pendingUserActionTarget) return;
+    setUserActionLoading(true);
+    setError("");
+    try {
+      const response = await fetch(apiUrl(`/users/${encodeURIComponent(pendingUserActionTarget.id)}/reset-access`), {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const body = (await response.json().catch(() => ({}))) as { message?: string };
+      if (!response.ok) {
+        throw new Error(body.message ?? "Não foi possível resetar o acesso.");
+      }
+      setPanelNotice(body.message ?? "Reset de acesso executado e e-mail enviado.");
+      await refreshAll();
+      closeUserActionModal();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Erro ao resetar acesso.");
+      setUserActionLoading(false);
+    }
+  }
+
+  async function handleApproveUser(): Promise<void> {
+    if (!pendingUserActionTarget) return;
+    setUserActionLoading(true);
+    setError("");
+    try {
+      const response = await fetch(apiUrl(`/users/${encodeURIComponent(pendingUserActionTarget.id)}/approve`), {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const body = (await response.json().catch(() => ({}))) as { message?: string };
+      if (!response.ok) {
+        throw new Error(body.message ?? "Não foi possível aprovar o usuário.");
+      }
+      setPanelNotice(body.message ?? "Usuário aprovado com sucesso.");
+      await refreshAll();
+      closeUserActionModal();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Erro ao aprovar usuário.");
+      setUserActionLoading(false);
+    }
+  }
+
+  async function handleSaveUserEdit(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (!pendingUserActionTarget) return;
+    const reason = pendingUserActionReason.trim();
+    if (!reason) {
+      setError("Informe o motivo da edição.");
+      return;
+    }
+    let normalizedBirthDate = "";
+    try {
+      normalizedBirthDate = normalizeBirthDateForApi(editUserDraft.birthDate);
+    } catch (validationError) {
+      setError(validationError instanceof Error ? validationError.message : "Data de nascimento inválida.");
+      return;
+    }
+    setUserActionLoading(true);
+    setError("");
+    try {
+      const response = await fetch(apiUrl(`/users/${encodeURIComponent(pendingUserActionTarget.id)}`), {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          fullName: editUserDraft.fullName,
+          email: editUserDraft.email,
+          role: editUserDraft.role,
+          cpf: editUserDraft.cpf,
+          rg: editUserDraft.rg,
+          birthDate: normalizedBirthDate,
+          address: editUserDraft.address,
+          fatherName: editUserDraft.fatherName,
+          motherName: editUserDraft.motherName,
+          zipCode: editUserDraft.zipCode,
+          street: editUserDraft.street,
+          neighborhood: editUserDraft.neighborhood,
+          city: editUserDraft.city,
+          state: editUserDraft.state,
+          addressNumber: editUserDraft.addressNumber,
+          addressComplement: editUserDraft.addressComplement,
+          reason,
+        }),
+      });
+      const body = (await response.json().catch(() => null)) as { message?: string } | null;
+      if (!response.ok) {
+        throw new Error(body?.message ?? "Não foi possível salvar as alterações do usuário.");
+      }
+      setPanelNotice("Usuário atualizado com sucesso.");
+      await refreshAll();
+      closeUserActionModal();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Erro ao editar usuário.");
+      setUserActionLoading(false);
     }
   }
 
@@ -615,21 +1166,53 @@ function App() {
       }
 
       if (canEditCommissionTables) {
+        let bankValue = "";
+        if (isTypingNewBank) {
+          const normalizedBankName = bankName.trim();
+          if (!normalizedBankName) {
+            const msg = "Banco é obrigatório.";
+            window.alert(msg);
+            setError(msg);
+            return;
+          }
+          if (banksApiUnavailable) {
+            bankValue = normalizedBankName;
+          } else {
+            const createdBank = await apiPost<Bank>("/banks", { name: normalizedBankName });
+            bankValue = createdBank.name;
+          }
+        } else {
+          if (!selectedBankValue) {
+            const msg = "Banco é obrigatório.";
+            window.alert(msg);
+            setError(msg);
+            return;
+          }
+          const selectedBank = banks.find((bank) => bank.id === selectedBankValue);
+          if (!selectedBank) {
+            const msg = "Banco selecionado não encontrado.";
+            window.alert(msg);
+            setError(msg);
+            return;
+          }
+          bankValue = selectedBank.name;
+        }
         const normalizedTableName = tableName.trim();
+        const normalizedDeadline = tableDeadline.trim();
         if (!normalizedTableName) {
           const msg = "Nome da tabela é obrigatório.";
           window.alert(msg);
           setError(msg);
           return;
         }
-        const normalizedBank = tableBank.trim();
-        if (!normalizedBank) {
-          const msg = "Banco é obrigatório.";
+        if (!normalizedDeadline) {
+          const msg = "Prazo é obrigatório.";
           window.alert(msg);
           setError(msg);
           return;
         }
-        const commissionValue = Number(tableCommission);
+        const normalizedCommission = tableCommission.replace(",", ".").trim();
+        const commissionValue = Number(normalizedCommission);
         if (!Number.isFinite(commissionValue) || commissionValue <= 0) {
           const msg = "Comissão é obrigatória.";
           window.alert(msg);
@@ -638,9 +1221,9 @@ function App() {
         }
         await apiPost("/commission-tables", {
           productId,
-          bank: normalizedBank,
+          bank: bankValue.trim(),
           name: normalizedTableName,
-          deadline: tableDeadline,
+          deadline: normalizedDeadline,
           commissionPercent: commissionValue,
           observation: tableObservation.trim() || undefined,
         });
@@ -651,8 +1234,9 @@ function App() {
       setTableName("");
       setTableDeadline("");
       setTableCommission("1");
-      setTableBank("");
-      setBankSearch("");
+      setBankName("");
+      setSelectedBankValue("");
+      setIsTypingNewBank(false);
       setTableObservation("");
       await refreshAll();
     } catch (requestError) {
@@ -660,18 +1244,160 @@ function App() {
     }
   }
 
-  async function handleUploadContent(event: FormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault();
-    setError("");
-    if (!contentFile) {
-      setError("Selecione um arquivo.");
+  async function handleEditCommissionTable(target: CommissionTable): Promise<void> {
+    if (!canEditCommissionTables) return;
+    const bank = window.prompt("Banco:", target.bank)?.trim();
+    if (!bank) return;
+    const name = window.prompt("Nome da Tabela:", target.name)?.trim();
+    if (!name) return;
+    const deadline = window.prompt("Prazo:", target.deadline)?.trim();
+    if (!deadline) return;
+    const commissionRaw = window.prompt("Comissão (%):", String(target.commissionPercent))?.trim();
+    if (!commissionRaw) return;
+    const commissionPercent = Number(String(commissionRaw).replace(",", "."));
+    if (!Number.isFinite(commissionPercent) || commissionPercent <= 0) {
+      setError("Comissão inválida.");
       return;
     }
+    const observationInput = window.prompt("Observação (opcional):", target.observation ?? "");
+    if (observationInput === null) return;
+    setError("");
+    try {
+      const response = await fetch(apiUrl(`/commission-tables/${encodeURIComponent(target.id)}`), {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          bank,
+          name,
+          deadline,
+          commissionPercent,
+          observation: observationInput.trim(),
+        }),
+      });
+      const body = (await response.json().catch(() => ({}))) as { message?: string };
+      if (!response.ok) {
+        throw new Error(body.message ?? "Não foi possível editar a tabela.");
+      }
+      await refreshAll();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Erro ao editar tabela.");
+    }
+  }
+
+  function requestDeleteCommissionTable(target: CommissionTable): void {
+    if (!canEditCommissionTables) return;
+    setPendingDeleteCommissionTableId(target.id);
+    setPendingDeleteCommissionTableLabel(target.name);
+  }
+
+  async function handleDeleteCommissionTable(): Promise<void> {
+    if (!canEditCommissionTables) return;
+    const tableId = pendingDeleteCommissionTableId;
+    if (!tableId) return;
+    setError("");
+    try {
+      const response = await fetch(apiUrl(`/commission-tables/${encodeURIComponent(tableId)}`), {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const body = (await response.json().catch(() => ({}))) as { message?: string };
+      if (!response.ok) {
+        throw new Error(body.message ?? "Não foi possível excluir a tabela.");
+      }
+      setPendingDeleteCommissionTableId("");
+      setPendingDeleteCommissionTableLabel("");
+      await refreshAll();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Erro ao excluir tabela.");
+    }
+  }
+
+  async function handleEditProductCardTitle(product: Product): Promise<void> {
+    if (!canEditCommissionTables) return;
+    const next = window.prompt("Novo nome do produto:", product.name)?.trim();
+    if (!next) return;
+    setError("");
+    try {
+      const response = await fetch(apiUrl(`/products/${encodeURIComponent(product.id)}`), {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ name: next }),
+      });
+      const body = (await response.json().catch(() => ({}))) as { message?: string };
+      if (!response.ok) {
+        throw new Error(body.message ?? "Não foi possível editar o produto.");
+      }
+      await refreshAll();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Erro ao editar produto.");
+    }
+  }
+
+  function requestDeleteProductTables(product: Product): void {
+    if (!canEditCommissionTables) return;
+    setPendingDeleteProductTablesId(product.id);
+    setPendingDeleteProductTablesLabel(product.name);
+  }
+
+  async function handleDeleteProductTables(): Promise<void> {
+    if (!canEditCommissionTables) return;
+    const productId = pendingDeleteProductTablesId;
+    if (!productId) return;
+    setError("");
+    try {
+      const response = await fetch(apiUrl(`/commission-tables/by-product/${encodeURIComponent(productId)}`), {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const body = (await response.json().catch(() => ({}))) as { message?: string };
+      if (!response.ok) {
+        throw new Error(body.message ?? "Não foi possível excluir as tabelas do produto.");
+      }
+      setPendingDeleteProductTablesId("");
+      setPendingDeleteProductTablesLabel("");
+      await refreshAll();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Erro ao excluir tabelas do produto.");
+    }
+  }
+
+  async function uploadContentFile(file: File, type: UploadContentType, displayName: string): Promise<void> {
+    setError("");
+    if (!currentFolderPath) {
+      const msg = "Entre em uma pasta para adicionar arquivos.";
+      setError(msg);
+      window.alert(msg);
+      return;
+    }
+    const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+    const isValidByType =
+      (type === "PDF" && extension === "pdf") ||
+      (type === "PNG" && extension === "png") ||
+      (type === "JPEG" && (extension === "jpg" || extension === "jpeg"));
+    if (!isValidByType) {
+      const msg =
+        type === "PDF"
+          ? "Formato inválido: selecione um arquivo .pdf."
+          : type === "PNG"
+            ? "Formato inválido: selecione um arquivo .png."
+            : "Formato inválido: selecione um arquivo .jpg ou .jpeg.";
+      setError(msg);
+      window.alert(msg);
+      return;
+    }
+    const targetFolder = currentFolderPath;
     try {
       const formData = new FormData();
-      formData.append("title", contentTitle);
-      formData.append("type", contentType);
-      formData.append("file", contentFile);
+      formData.append("title", targetFolder);
+      formData.append("type", type);
+      formData.append("displayName", displayName.trim() || file.name);
+      formData.append("file", file);
       const response = await fetch(apiUrl("/contents"), {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
@@ -681,11 +1407,171 @@ function App() {
         const body = await response.json().catch(() => ({}));
         throw new Error(body.message ?? "Falha no upload.");
       }
-      setContentTitle("");
-      setContentFile(null);
+      const created = (await response.json().catch(() => null)) as { id?: unknown } | null;
+      const createdId = typeof created?.id === "string" ? created.id : "";
+      if (createdId && displayName.trim()) {
+        setContentFileNames((prev) => ({ ...prev, [createdId]: displayName.trim() }));
+      }
+      if (pdfInputRef.current) pdfInputRef.current.value = "";
+      if (imageInputRef.current) imageInputRef.current.value = "";
       await refreshAll();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Erro ao enviar conteúdo.");
+    }
+  }
+
+  function handleCreateFolder(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    setError("");
+    const normalizedName = newFolderName.trim();
+    if (!normalizedName) {
+      const msg = "Nome da pasta é obrigatório.";
+      setError(msg);
+      window.alert(msg);
+      return;
+    }
+    const nextPath = normalizeFolderPath(currentFolderPath ? `${currentFolderPath}/${normalizedName}` : normalizedName);
+    if (!nextPath) {
+      const msg = "Pasta inválida.";
+      setError(msg);
+      window.alert(msg);
+      return;
+    }
+    if (!manualFolders.includes(nextPath) && !folderPaths.includes(nextPath)) {
+      setManualFolders((prev) => [...prev, nextPath]);
+    }
+    // Na criação pela tela raiz, manter na listagem de pastas.
+    // Dentro de uma pasta, permanece no contexto atual.
+    setCurrentFolderPath(currentFolderPath);
+    setNewFolderName("");
+    setIsFolderModalOpen(false);
+  }
+
+  async function openContentFileInNewTab(content: Content): Promise<void> {
+    try {
+      setError("");
+      const response = await fetch(apiUrl(`/contents/${encodeURIComponent(content.id)}/file`), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { message?: string };
+        throw new Error(body.message ?? "Não foi possível abrir o arquivo.");
+      }
+      const mime = response.headers.get("Content-Type") ?? "application/octet-stream";
+      const blob = await response.blob();
+      const typedBlob = blob.type ? blob : new Blob([await blob.arrayBuffer()], { type: mime });
+      const objectUrl = URL.createObjectURL(typedBlob);
+      window.open(objectUrl, "_blank", "noopener,noreferrer");
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } catch (requestError) {
+      const msg = requestError instanceof Error ? requestError.message : "Não foi possível abrir o arquivo.";
+      setError(msg);
+    }
+  }
+
+  function openFileModal(file: File, type: UploadContentType): void {
+    setPendingUploadFile(file);
+    setPendingUploadType(type);
+    setUploadDisplayName(fileBaseName(file.name));
+    setIsFileModalOpen(true);
+  }
+
+  async function handleConfirmFileUpload(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (!pendingUploadFile || !pendingUploadType) return;
+    const safeName = uploadDisplayName.trim();
+    if (!safeName) {
+      const msg = "Nome do arquivo é obrigatório.";
+      setError(msg);
+      window.alert(msg);
+      return;
+    }
+    await uploadContentFile(pendingUploadFile, pendingUploadType, safeName);
+    setIsFileModalOpen(false);
+    setPendingUploadFile(null);
+    setPendingUploadType(null);
+    setUploadDisplayName("");
+  }
+
+  function requestDeleteFolder(folderPath: string): void {
+    if (!canEditContents) return;
+    setPendingDeleteFolderPath(folderPath);
+  }
+
+  function requestDeleteContent(content: Content, displayLabel: string): void {
+    if (!canEditContents) return;
+    setPendingDeleteContentId(content.id);
+    setPendingDeleteContentLabel(displayLabel);
+  }
+
+  async function handleConfirmDeleteContent(): Promise<void> {
+    const id = pendingDeleteContentId;
+    if (!id) return;
+    if (!canEditContents) return;
+    try {
+      setError("");
+      const response = await fetch(apiUrl(`/contents/${encodeURIComponent(id)}`), {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const raw = await response.text();
+      let apiMessage = "";
+      try {
+        const parsed = JSON.parse(raw) as { message?: unknown };
+        if (typeof parsed.message === "string" && parsed.message.trim()) {
+          apiMessage = parsed.message.trim();
+        }
+      } catch {
+        if (raw.trim()) {
+          apiMessage = raw.trim().slice(0, 240);
+        }
+      }
+      if (!response.ok) {
+        throw new Error(
+          apiMessage ||
+            `Não foi possível excluir o arquivo (HTTP ${response.status}). Reinicie o servidor (npm start) para carregar a rota DELETE /api/contents/:id.`,
+        );
+      }
+      setContentFileNames((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      setPendingDeleteContentId("");
+      setPendingDeleteContentLabel("");
+      await refreshAll();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Erro ao excluir arquivo.");
+    }
+  }
+
+  async function handleConfirmDeleteFolder(): Promise<void> {
+    const folderPath = pendingDeleteFolderPath;
+    if (!folderPath) return;
+    if (!canEditContents) return;
+    try {
+      setError("");
+      const response = await fetch(`${apiUrl("/contents/folder")}?path=${encodeURIComponent(folderPath)}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const body = (await response.json().catch(() => ({}))) as { message?: string };
+      if (!response.ok) {
+        throw new Error(body.message ?? "Não foi possível excluir a pasta.");
+      }
+      setManualFolders((prev) =>
+        prev.filter((item) => {
+          const normalized = normalizeFolderPath(item);
+          return normalized !== folderPath && !normalized.startsWith(`${folderPath}/`);
+        }),
+      );
+      if (currentFolderPath === folderPath || currentFolderPath.startsWith(`${folderPath}/`)) {
+        setCurrentFolderPath("");
+      }
+      setPendingDeleteFolderPath("");
+      await refreshAll();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Erro ao excluir pasta.");
     }
   }
 
@@ -783,56 +1669,86 @@ function App() {
 
       <aside className={`shell-nav${navOpen ? " is-open" : ""}${navCollapsed ? " is-collapsed" : ""}`}>
         <div className="shell-nav__top">
-          {activeLogoUrl ? (
-            <img className="logo logo--nav" src={activeLogoUrl} alt="" width={160} height={48} />
-          ) : null}
           <button
             type="button"
-            className="shell-nav__pin"
+            className="shell-rail__menu-toggle"
             aria-expanded={!navCollapsed}
             aria-label={navCollapsed ? "Expandir menu" : "Recolher menu"}
             onClick={() => setNavCollapsed((c) => !c)}
           >
-            <NavCollapseIcon pointsLeft={!navCollapsed} />
+            {navCollapsed ? (
+              <Menu {...RAIL_ICON_PROPS} aria-hidden />
+            ) : (
+              <PanelLeftClose {...RAIL_ICON_PROPS} aria-hidden />
+            )}
           </button>
+          {activeLogoUrl ? (
+            <img className="logo logo--nav" src={activeLogoUrl} alt="" width={160} height={48} />
+          ) : null}
           <button type="button" className="shell-nav__close" aria-label="Fechar" onClick={() => setNavOpen(false)}>
             ×
           </button>
         </div>
 
-        <nav className="shell-menu" aria-label="Seções">
-          {navItems.map((item) => (
+        <nav className="shell-menu shell-menu--rail" aria-label="Seções">
+          <div className="shell-rail__group">
+            {navItems.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                className={`shell-rail-item${activeModule === item.key ? " is-active" : ""}`}
+                aria-current={activeModule === item.key ? "page" : undefined}
+                onClick={() => goToModule(item.key)}
+              >
+                <span className="shell-rail-item__icon">
+                  <RailModuleIcon module={item.key} />
+                </span>
+                <span className="shell-rail-item__label">{item.label}</span>
+              </button>
+            ))}
+          </div>
+          <div className="shell-rail__group shell-rail__actions">
             <button
-              key={item.key}
               type="button"
-              className={activeModule === item.key ? "is-active" : ""}
-              onClick={() => goToModule(item.key)}
+              className="shell-rail-item shell-rail-item--utility"
+              onClick={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}
+              aria-label={theme === "dark" ? "Ativar modo claro" : "Ativar modo escuro"}
             >
-              <span className="shell-menu__full">{item.label}</span>
-              <span className="shell-menu__short" aria-hidden>
-                {item.short}
+              <span className="shell-rail-item__icon">
+                <SunMoon {...RAIL_ICON_PROPS} aria-hidden />
               </span>
+              <span className="shell-rail-item__label">{theme === "dark" ? "Claro" : "Escuro"}</span>
             </button>
-          ))}
+            <button type="button" className="shell-rail-item shell-rail-item--utility" onClick={() => void refreshAll()}>
+              <span className="shell-rail-item__icon">
+                <RefreshCw {...RAIL_ICON_PROPS} aria-hidden />
+              </span>
+              <span className="shell-rail-item__label">Atualizar</span>
+            </button>
+          </div>
+          <div className="shell-rail__group shell-rail__group--footer">
+            <button
+              type="button"
+              className="shell-rail-item shell-rail-item--logout"
+              onClick={() => {
+                setToken("");
+                setSession(null);
+                setError("");
+                setNavOpen(false);
+                try {
+                  localStorage.removeItem(SESSION_STORAGE_KEY);
+                } catch {
+                  /* ignore */
+                }
+              }}
+            >
+              <span className="shell-rail-item__icon">
+                <LogOut {...RAIL_ICON_PROPS} aria-hidden />
+              </span>
+              <span className="shell-rail-item__label">Sair</span>
+            </button>
+          </div>
         </nav>
-
-        <button
-          type="button"
-          className="shell-logout"
-          onClick={() => {
-            setToken("");
-            setSession(null);
-            setError("");
-            setNavOpen(false);
-            try {
-              localStorage.removeItem(SESSION_STORAGE_KEY);
-            } catch {
-              /* ignore */
-            }
-          }}
-        >
-          Sair
-        </button>
       </aside>
 
       <div className="shell-main">
@@ -849,21 +1765,15 @@ function App() {
             <span />
           </button>
           <h1 className="shell-header__title">{MODULE_TITLE[activeModule]}</h1>
-          <button
-            type="button"
-            className="theme-toggle"
-            onClick={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}
-          >
-            {theme === "dark" ? "Modo claro" : "Modo escuro"}
-          </button>
-          <button type="button" className="shell-refresh" onClick={() => void refreshAll()}>
-            Atualizar
-          </button>
         </header>
 
         <main className="shell-body">
-          {panelNotice ? <p className="notice-banner">{panelNotice}</p> : null}
-          {error ? <p className="error error--banner">{error}</p> : null}
+          {panelNotice || error ? (
+            <div className="system-alerts-overlay" role="status" aria-live="polite">
+              {panelNotice ? <p className="notice-banner system-alert system-alert--notice">{panelNotice}</p> : null}
+              {error ? <p className="error error--banner system-alert system-alert--error">{error}</p> : null}
+            </div>
+          ) : null}
 
           {activeModule === "users" ? (
             <div className="module-grid">
@@ -913,7 +1823,7 @@ function App() {
                         disabled={!isMaster && !session!.permViewContents && !session!.permContents}
                         onChange={(e) => setPermViewContents(e.target.checked)}
                       />
-                      <span>Acessar conteúdo</span>
+                      <span>Acessar conteúdo e tabela</span>
                     </label>
                     <label className="checkbox-row">
                       <input
@@ -963,21 +1873,78 @@ function App() {
                 <table>
                   <thead>
                     <tr>
+                      <th className="users-col-id">ID</th>
+                      <th className="users-col-cpf">CPF</th>
                       <th>Nome</th>
                       <th>E-mail</th>
                       <th>Perfil</th>
-                      <th>Permissões</th>
                       <th>Status</th>
+                      <th className="users-col-action-title">
+                        <span>Ação</span>
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {users.map((user) => (
                       <tr key={user.id}>
-                        <td>{user.fullName}</td>
+                        <td className="users-col-id">{user.systemCode ?? "—"}</td>
+                        <td className="users-col-cpf">{user.profile?.cpf || "—"}</td>
+                        <td>{displayNameInUserList(user)}</td>
                         <td>{user.email}</td>
                         <td>{user.role}</td>
-                        <td className="cell-muted">{formatUserPermissionLabels(user)}</td>
-                        <td>{user.status}</td>
+                        <td>
+                          <span className={`user-status ${userStatusClassName(user)}`}>
+                            <span className="user-status__dot" aria-hidden />
+                            {formatUserLifecycleStatus(user)}
+                          </span>
+                        </td>
+                        <td className="user-actions-cell">
+                          {canCreateUsers ? (
+                            <div className="user-actions-inline">
+                              <button
+                                type="button"
+                                className="btn-secondary user-inline-btn user-inline-btn--edit"
+                                onClick={() => openUserAction("EDIT", user)}
+                                title="Editar"
+                                aria-label={`Editar usuário ${displayNameInUserList(user)}`}
+                              >
+                                <Pencil size={14} aria-hidden />
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-secondary user-inline-btn user-inline-btn--reset"
+                                onClick={() => openUserAction("RESET", user)}
+                                title="Resetar"
+                                aria-label={`Resetar acesso de ${displayNameInUserList(user)}`}
+                              >
+                                <RotateCcw size={14} aria-hidden />
+                              </button>
+                              {(user.status ?? "").toUpperCase() === "PENDING_APPROVAL" ? (
+                                <button
+                                  type="button"
+                                  className="btn-secondary user-inline-btn user-inline-btn--approve"
+                                  onClick={() => openUserAction("APPROVE", user)}
+                                  title="Aprovar e ativar"
+                                  aria-label={`Aprovar e ativar usuário ${displayNameInUserList(user)}`}
+                                >
+                                  <CheckCircle2 size={14} aria-hidden />
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="btn-secondary user-inline-btn user-inline-btn--block"
+                                  onClick={() => openUserAction("BLOCKED", user)}
+                                  title="Bloquear"
+                                  aria-label={`Bloquear usuário ${displayNameInUserList(user)}`}
+                                >
+                                  <XCircle size={14} aria-hidden />
+                                </button>
+                              )}
+                            </div>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -986,195 +1953,1019 @@ function App() {
             </div>
           ) : null}
 
-        {activeModule === "products" ? (
-          <div className="module-grid">
-            <form className="card form-grid form-grid--table-create" onSubmit={handleCreateProduct}>
-              <h3>Criação de Tabela</h3>
-              <div className="table-create-row">
+          {pendingUserActionTarget && (pendingUserAction === "INACTIVE" || pendingUserAction === "BLOCKED") ? (
+            <div className="modal-backdrop" role="presentation">
+              <div className="card modal-dialog" role="dialog" aria-modal onClick={(e) => e.stopPropagation()}>
+                <div className="modal-dialog__head">
+                  <h3 className="modal-dialog__title">
+                    {pendingUserAction === "INACTIVE" ? "Inativar usuário" : "Bloquear usuário"}
+                  </h3>
+                  <button type="button" className="modal-dialog__close" onClick={closeUserActionModal} aria-label="Fechar">
+                    <X size={16} aria-hidden />
+                  </button>
+                </div>
+                <p className="muted">{`Usuário: ${displayNameInUserList(pendingUserActionTarget)}`}</p>
                 <label>
-                  Produto
-                  {isTypingNewProduct ? (
-                    <>
+                  Motivo
+                  <input
+                    value={pendingUserActionReason}
+                    onChange={(e) => setPendingUserActionReason(e.target.value)}
+                    placeholder="Descreva o motivo da ação"
+                    required
+                    autoFocus
+                  />
+                </label>
+                <div className="modal-dialog__actions">
+                  <button type="button" className="btn-ghost" onClick={closeUserActionModal}>
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-confirm"
+                    onClick={() => void handleConfirmUserStatusAction()}
+                    disabled={userActionLoading}
+                  >
+                    {userActionLoading ? "Salvando..." : "Confirmar"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {pendingUserActionTarget && pendingUserAction === "RESET" ? (
+            <div className="modal-backdrop" role="presentation">
+              <div className="card modal-dialog" role="dialog" aria-modal onClick={(e) => e.stopPropagation()}>
+                <div className="modal-dialog__head">
+                  <h3 className="modal-dialog__title">Resetar acesso</h3>
+                  <button type="button" className="modal-dialog__close" onClick={closeUserActionModal} aria-label="Fechar">
+                    <X size={16} aria-hidden />
+                  </button>
+                </div>
+                <p className="muted">
+                  {`Confirma resetar o acesso de "${displayNameInUserList(pendingUserActionTarget)}"? Será enviada uma senha temporária por e-mail.`}
+                </p>
+                <div className="modal-dialog__actions">
+                  <button type="button" className="btn-ghost" onClick={closeUserActionModal}>
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-confirm"
+                    onClick={() => void handleResetUserAccess()}
+                    disabled={userActionLoading}
+                  >
+                    {userActionLoading ? "Enviando..." : "Confirmar reset"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {pendingUserActionTarget && pendingUserAction === "APPROVE" ? (
+            <div className="modal-backdrop" role="presentation">
+              <div className="card modal-dialog" role="dialog" aria-modal onClick={(e) => e.stopPropagation()}>
+                <div className="modal-dialog__head">
+                  <h3 className="modal-dialog__title">Aprovar e ativar usuário</h3>
+                  <button type="button" className="modal-dialog__close" onClick={closeUserActionModal} aria-label="Fechar">
+                    <X size={16} aria-hidden />
+                  </button>
+                </div>
+                <p className="muted">
+                  {`Confirma aprovar "${displayNameInUserList(pendingUserActionTarget)}"? O usuário ficará ativo e poderá fazer login.`}
+                </p>
+                <div className="modal-dialog__actions">
+                  <button type="button" className="btn-ghost" onClick={closeUserActionModal}>
+                    Cancelar
+                  </button>
+                  <button type="button" className="btn-confirm" onClick={() => void handleApproveUser()} disabled={userActionLoading}>
+                    {userActionLoading ? "Salvando..." : "Confirmar aprovação"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {pendingUserActionTarget && pendingUserAction === "EDIT" ? (
+            <div className="modal-backdrop" role="presentation">
+              <div className="card modal-dialog" role="dialog" aria-modal onClick={(e) => e.stopPropagation()}>
+                <div className="modal-dialog__head">
+                  <h3 className="modal-dialog__title">Editar usuário</h3>
+                  <button type="button" className="modal-dialog__close" onClick={closeUserActionModal} aria-label="Fechar">
+                    <X size={16} aria-hidden />
+                  </button>
+                </div>
+                <form className="modal-dialog__form form-grid form-grid--left" onSubmit={(e) => void handleSaveUserEdit(e)}>
+                  {pendingUserActionTarget.documents &&
+                  (pendingUserActionTarget.documents.identityPath ||
+                    pendingUserActionTarget.documents.identityBackPath ||
+                    pendingUserActionTarget.documents.addressProofPath) ? (
+                    <div className="user-edit-docs">
+                      <h4 className="onboarding-subtitle" style={{ marginTop: 0 }}>
+                        Documentos do cadastro
+                      </h4>
+                      <div className="user-edit-docs__actions">
+                        {pendingUserActionTarget.documents.identityPath ? (
+                          <button
+                            type="button"
+                            className="btn-secondary"
+                            onClick={() =>
+                              void openUserUploadedFile(
+                                pendingUserActionTarget.documents?.identityPath,
+                                "Documento (frente)",
+                              )
+                            }
+                          >
+                            Ver documento (frente)
+                          </button>
+                        ) : null}
+                        {pendingUserActionTarget.documents.identityBackPath ? (
+                          <button
+                            type="button"
+                            className="btn-secondary"
+                            onClick={() =>
+                              void openUserUploadedFile(
+                                pendingUserActionTarget.documents?.identityBackPath,
+                                "Documento (verso)",
+                              )
+                            }
+                          >
+                            Ver documento (verso)
+                          </button>
+                        ) : null}
+                        {pendingUserActionTarget.documents.addressProofPath ? (
+                          <button
+                            type="button"
+                            className="btn-secondary"
+                            onClick={() =>
+                              void openUserUploadedFile(
+                                pendingUserActionTarget.documents?.addressProofPath,
+                                "Comprovante de residência",
+                              )
+                            }
+                          >
+                            Ver comprovante de residência
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : null}
+                  <label>
+                    Nome completo
+                    <input
+                      value={editUserDraft.fullName}
+                      onChange={(e) => setEditUserDraft((prev) => ({ ...prev, fullName: e.target.value }))}
+                      required
+                    />
+                  </label>
+                  <label>
+                    E-mail
+                    <input
+                      type="email"
+                      value={editUserDraft.email}
+                      onChange={(e) => setEditUserDraft((prev) => ({ ...prev, email: e.target.value }))}
+                      required
+                    />
+                  </label>
+                  <label>
+                    Perfil
+                    <select
+                      value={editUserDraft.role}
+                      onChange={(e) => setEditUserDraft((prev) => ({ ...prev, role: e.target.value }))}
+                    >
+                      <option value="MASTER">Master</option>
+                      <option value="LIDER">Líder</option>
+                      <option value="SUPORTE">Suporte</option>
+                      <option value="VENDEDOR">Vendedor</option>
+                    </select>
+                  </label>
+                  <label>
+                    CPF
+                    <input
+                      value={editUserDraft.cpf}
+                      onChange={(e) => setEditUserDraft((prev) => ({ ...prev, cpf: maskCpfInput(e.target.value) }))}
+                      placeholder="000.000.000-00"
+                      inputMode="numeric"
+                      required
+                    />
+                  </label>
+                  <label>
+                    RG
+                    <input
+                      value={editUserDraft.rg}
+                      onChange={(e) => setEditUserDraft((prev) => ({ ...prev, rg: e.target.value }))}
+                      required
+                    />
+                  </label>
+                  <label>
+                    Data de nascimento
+                    <input
+                      value={editUserDraft.birthDate}
+                      onChange={(e) =>
+                        setEditUserDraft((prev) => ({ ...prev, birthDate: maskBirthDateInput(e.target.value) }))
+                      }
+                      placeholder="DD/MM/AAAA"
+                      inputMode="numeric"
+                      required
+                    />
+                  </label>
+                  <label>
+                    Endereço (texto completo)
+                    <input
+                      value={editUserDraft.address}
+                      onChange={(e) => setEditUserDraft((prev) => ({ ...prev, address: e.target.value }))}
+                      required
+                    />
+                  </label>
+                  <label>
+                    Nome do pai
+                    <input
+                      value={editUserDraft.fatherName}
+                      onChange={(e) => setEditUserDraft((prev) => ({ ...prev, fatherName: e.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    Nome da mãe
+                    <input
+                      value={editUserDraft.motherName}
+                      onChange={(e) => setEditUserDraft((prev) => ({ ...prev, motherName: e.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    CEP
+                    <input
+                      value={editUserDraft.zipCode}
+                      onChange={(e) => setEditUserDraft((prev) => ({ ...prev, zipCode: maskCepInput(e.target.value) }))}
+                      placeholder="00000-000"
+                      inputMode="numeric"
+                    />
+                  </label>
+                  <label>
+                    Logradouro
+                    <input
+                      value={editUserDraft.street}
+                      onChange={(e) => setEditUserDraft((prev) => ({ ...prev, street: e.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    Bairro
+                    <input
+                      value={editUserDraft.neighborhood}
+                      onChange={(e) => setEditUserDraft((prev) => ({ ...prev, neighborhood: e.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    Cidade
+                    <input
+                      value={editUserDraft.city}
+                      onChange={(e) => setEditUserDraft((prev) => ({ ...prev, city: e.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    UF
+                    <input
+                      value={editUserDraft.state}
+                      onChange={(e) =>
+                        setEditUserDraft((prev) => ({
+                          ...prev,
+                          state: e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2),
+                        }))
+                      }
+                      maxLength={2}
+                      placeholder="SP"
+                    />
+                  </label>
+                  <label>
+                    Número
+                    <input
+                      value={editUserDraft.addressNumber}
+                      onChange={(e) => setEditUserDraft((prev) => ({ ...prev, addressNumber: e.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    Complemento
+                    <input
+                      value={editUserDraft.addressComplement}
+                      onChange={(e) => setEditUserDraft((prev) => ({ ...prev, addressComplement: e.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    Motivo da edição
+                    <input
+                      value={pendingUserActionReason}
+                      onChange={(e) => setPendingUserActionReason(e.target.value)}
+                      required
+                    />
+                  </label>
+                  <div className="modal-dialog__actions">
+                    <button type="button" className="btn-ghost" onClick={closeUserActionModal}>
+                      Cancelar
+                    </button>
+                    <button type="submit" disabled={userActionLoading}>
+                      {userActionLoading ? "Salvando..." : "Salvar"}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          ) : null}
+
+        {activeModule === "products" ? (
+          <div className="row g-3 module-grid--products">
+            {canEditCommissionTables ? (
+              <form
+                className="card form-grid form-grid--table-create commission-table-create-form col-12 col-lg-3"
+                onSubmit={handleCreateProduct}
+              >
+                <div className="row gx-2 gy-1 table-create-row">
+                  <label className="col-12">
+                    <span className="field-head">
+                      <span>Produto</span>
+                      {isTypingNewProduct ? (
+                        <button
+                          type="button"
+                          className="field-toggle"
+                          onClick={() => {
+                            setIsTypingNewProduct(false);
+                            setProductName("");
+                          }}
+                        >
+                          Usar existente
+                        </button>
+                      ) : null}
+                    </span>
+                    {isTypingNewProduct ? (
                       <input
                         value={productName}
                         onChange={(e) => setProductName(e.target.value)}
                         placeholder="Digite o novo produto"
                         required
                       />
-                      <button
-                        type="button"
-                        className="btn-ghost"
-                        onClick={() => {
-                          setIsTypingNewProduct(false);
-                          setProductName("");
+                    ) : (
+                      <select
+                        value={selectedProductValue}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          if (value === NEW_PRODUCT_OPTION) {
+                            setIsTypingNewProduct(true);
+                            setProductName("");
+                            return;
+                          }
+                          setSelectedProductValue(value);
                         }}
+                        required
                       >
-                        Usar produto existente
-                      </button>
-                    </>
-                  ) : (
-                    <select
-                      value={selectedProductValue}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        if (value === NEW_PRODUCT_OPTION) {
-                          setIsTypingNewProduct(true);
-                          setProductName("");
-                          return;
-                        }
-                        setSelectedProductValue(value);
-                      }}
-                      required
-                    >
-                      <option value="">Selecione o produto</option>
-                      <option value={NEW_PRODUCT_OPTION}>+ Adicionar Produto</option>
-                      {products.map((product) => (
-                        <option key={product.id} value={product.id}>
-                          {product.name}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </label>
-                {canEditCommissionTables ? (
-                  <>
-                    <label>
-                      Banco
-                      <div className="bank-select">
-                        <input
-                          value={bankSearch}
-                          onChange={(e) => setBankSearch(e.target.value)}
-                          placeholder="Buscar banco..."
-                        />
-                        <select value={tableBank} onChange={(e) => setTableBank(e.target.value)} required>
-                          <option value="">Selecione um banco</option>
-                          {filteredBankOptions.map((bankName) => (
-                            <option key={bankName} value={bankName}>
-                              {bankName}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </label>
-                    <label>
-                      Tabela
-                      <input value={tableName} onChange={(e) => setTableName(e.target.value)} required />
-                    </label>
-                    <label>
-                      Prazo
-                      <input value={tableDeadline} onChange={(e) => setTableDeadline(e.target.value)} required />
-                    </label>
-                    <label>
-                      Observação
+                        <option value="">Selecione o produto</option>
+                        <option value={NEW_PRODUCT_OPTION}>+ Adicionar Produto</option>
+                        {products.map((product) => (
+                          <option key={product.id} value={product.id}>
+                            {product.name}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </label>
+                  <label className="col-12">
+                    <span className="field-head">
+                      <span>Banco</span>
+                      {isTypingNewBank ? (
+                        banksApiUnavailable ? null : (
+                        <button
+                          type="button"
+                          className="field-toggle"
+                          onClick={() => {
+                            setIsTypingNewBank(false);
+                            setBankName("");
+                          }}
+                        >
+                          Usar existente
+                        </button>
+                        )
+                      ) : null}
+                    </span>
+                    {isTypingNewBank || banksApiUnavailable ? (
                       <input
-                        value={tableObservation}
-                        onChange={(e) => setTableObservation(e.target.value)}
-                        placeholder="Opcional"
+                        value={bankName}
+                        onChange={(e) => setBankName(e.target.value)}
+                        placeholder="Digite o novo banco"
+                        required
                       />
-                    </label>
-                  </>
-                ) : null}
-              </div>
-              {canEditCommissionTables ? (
+                    ) : (
+                      <select
+                        value={selectedBankValue}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          if (value === NEW_BANK_OPTION) {
+                            setIsTypingNewBank(true);
+                            setBankName("");
+                            return;
+                          }
+                          setSelectedBankValue(value);
+                        }}
+                        required
+                      >
+                        <option value="">Selecione o banco</option>
+                        <option value={NEW_BANK_OPTION}>+ Adicionar Banco</option>
+                        {banks.map((bank) => (
+                          <option key={bank.id} value={bank.id}>
+                            {bank.name}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </label>
+                  <label className="col-12">
+                    Tabela
+                    <input value={tableName} onChange={(e) => setTableName(e.target.value)} required />
+                  </label>
+                  <label className="col-12 col-sm-6">
+                    Prazo
+                    <input value={tableDeadline} onChange={(e) => setTableDeadline(e.target.value)} required />
+                  </label>
+                  <label className="col-12 col-sm-6">
+                    Comissão %
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="Ex.: 1.5"
+                      value={tableCommission}
+                      onChange={(e) => setTableCommission(e.target.value)}
+                      required
+                    />
+                  </label>
+                  <label className="col-12">
+                    Observação
+                    <input
+                      value={tableObservation}
+                      onChange={(e) => setTableObservation(e.target.value)}
+                      placeholder="Opcional"
+                    />
+                  </label>
+                </div>
+                <button type="submit">
+                  Incluir
+                </button>
+              </form>
+            ) : null}
+            <article className={canEditCommissionTables ? "col-12 col-lg-9" : "col-12"}>
+              <div className="products-filters">
                 <label>
-                  Comissão %
-                  <input
-                    type="number"
-                    min="0.1"
-                    step="0.1"
-                    value={tableCommission}
-                    onChange={(e) => setTableCommission(e.target.value)}
-                    required
-                  />
+                  Produto
+                  <select value={filterProductId} onChange={(e) => setFilterProductId(e.target.value)}>
+                    <option value="">Todos</option>
+                    {products.map((product) => (
+                      <option key={product.id} value={product.id}>
+                        {product.name}
+                      </option>
+                    ))}
+                  </select>
                 </label>
-              ) : null}
-              <button type="submit">
-                {canEditCommissionTables
-                  ? isTypingNewProduct
-                    ? "Criar produto e tabela"
-                    : "Adicionar tabela ao produto"
-                  : "Adicionar produto"}
-              </button>
-            </form>
-            <article className="card table-wrap">
-              <h3>Produtos e tabelas</h3>
-              <ul className="simple-list">
-                {products.map((product) => (
-                  <li key={product.id}>{product.name}</li>
-                ))}
-              </ul>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Produto</th>
-                    <th>Banco</th>
-                    <th>Tabela</th>
-                    <th>Prazo</th>
-                    <th>Observação</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {tables.map((table) => (
-                    <tr key={table.id}>
-                      <td>{products.find((p) => p.id === table.productId)?.name ?? "—"}</td>
-                      <td>{table.bank}</td>
-                      <td>{table.name}</td>
-                      <td>{table.deadline}</td>
-                      <td className="cell-muted">{table.observation || "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                <label>
+                  Banco
+                  <select value={filterBankName} onChange={(e) => setFilterBankName(e.target.value)}>
+                    <option value="">Todos</option>
+                    {filterBankOptions.map((bank) => (
+                      <option key={bank} value={bank}>
+                        {bank}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              {groupedTablesByProduct.length === 0 ? (
+                <article className="card table-wrap">
+                  <p className="muted">Nenhuma tabela encontrada para os filtros selecionados.</p>
+                </article>
+              ) : (
+                groupedTablesByProduct.map(({ product, tables: productTables }) => (
+                  <article key={product.id} className="card table-wrap product-table-card">
+                    <div className="product-table-card__head">
+                      <h3>{product.name}</h3>
+                      {canEditCommissionTables ? (
+                        <div className="table-actions-inline">
+                          <button
+                            type="button"
+                            className="table-action-btn table-action-btn--edit"
+                            title="Editar nome do produto"
+                            aria-label={`Editar produto ${product.name}`}
+                            onClick={() => void handleEditProductCardTitle(product)}
+                          >
+                            <Pencil size={14} aria-hidden />
+                          </button>
+                          <button
+                            type="button"
+                            className="table-action-btn table-action-btn--delete"
+                            title="Excluir todas as tabelas do produto"
+                            aria-label={`Excluir tabelas de ${product.name}`}
+                            onClick={() => requestDeleteProductTables(product)}
+                          >
+                            <Trash2 size={14} aria-hidden />
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Banco</th>
+                          <th>Nome da Tabela</th>
+                          <th>Prazo</th>
+                          <th>% Comissão</th>
+                          <th>PDF</th>
+                          {canEditCommissionTables ? <th>Ações</th> : null}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {productTables.map((table) => (
+                          <tr key={table.id}>
+                            <td>{table.bank}</td>
+                            <td>{table.name}</td>
+                            <td>{table.deadline}</td>
+                            <td>{table.commissionPercent}</td>
+                            <td className="cell-muted">{table.observation || "—"}</td>
+                            {canEditCommissionTables ? (
+                              <td>
+                                <div className="table-actions-inline">
+                                  <button
+                                    type="button"
+                                    className="table-action-btn table-action-btn--edit"
+                                    title="Editar tabela"
+                                    aria-label={`Editar tabela ${table.name}`}
+                                    onClick={() => void handleEditCommissionTable(table)}
+                                  >
+                                    <Pencil size={14} aria-hidden />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="table-action-btn table-action-btn--delete"
+                                    title="Excluir tabela"
+                                    aria-label={`Excluir tabela ${table.name}`}
+                                    onClick={() => requestDeleteCommissionTable(table)}
+                                  >
+                                    <Trash2 size={14} aria-hidden />
+                                  </button>
+                                </div>
+                              </td>
+                            ) : null}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </article>
+                ))
+              )}
             </article>
           </div>
         ) : null}
 
         {activeModule === "contents" ? (
-          <div className="module-grid">
-            {canEditContents ? (
-            <form className="card form-grid" onSubmit={handleUploadContent}>
-              <h3>Novo conteúdo</h3>
-              <label>
-                Título
-                <input value={contentTitle} onChange={(e) => setContentTitle(e.target.value)} required />
-              </label>
-              <label>
-                Tipo
-                <select value={contentType} onChange={(e) => setContentType(e.target.value)}>
-                  <option>IMAGE</option>
-                  <option>PDF</option>
-                  <option>COMMISSION_TABLE</option>
-                  <option>OTHER</option>
-                </select>
-              </label>
-              <label>
-                Arquivo
-                <input type="file" onChange={(e) => setContentFile(e.target.files?.[0] ?? null)} required />
-              </label>
-              <button type="submit">Enviar conteúdo</button>
-            </form>
-            ) : null}
-            <article className="card table-wrap">
-              <h3>Conteúdos enviados</h3>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Título</th>
-                    <th>Tipo</th>
-                    <th>Arquivo</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {contents.map((content) => (
-                    <tr key={content.id}>
-                      <td>{content.title}</td>
-                      <td>{content.type}</td>
-                      <td>{content.filePath}</td>
-                    </tr>
+          <div className="module-grid module-grid--contents">
+            <section className="contents-page row g-3">
+              <div className="col-12 contents-toolbar">
+                {canEditContents ? (
+                  <button type="button" className="contents-toolbar__add-btn" onClick={openFolderModal}>
+                    <Plus size={18} aria-hidden />
+                    Adicionar Pasta
+                  </button>
+                ) : null}
+              </div>
+              {isEmptyRootContents ? null : (
+                <article className={`col-12 col-xl-10 ${currentFolderPath ? "card" : "contents-root-wrap"}`}>
+              <input
+                ref={pdfInputRef}
+                type="file"
+                accept=".pdf"
+                className="content-hidden-input"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  openFileModal(file, "PDF");
+                }}
+              />
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept=".png,.jpg,.jpeg"
+                className="content-hidden-input"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  const ext = file.name.split(".").pop()?.toLowerCase();
+                  const inferredType: UploadContentType = ext === "png" ? "PNG" : "JPEG";
+                  openFileModal(file, inferredType);
+                }}
+              />
+              {currentFolderPath ? (
+                <article
+                  className={`content-inside-panel${
+                    currentFolderFiles.length === 0 ? " content-inside-panel--empty" : " content-inside-panel--has-files"
+                  }`}
+                >
+                  {currentFolderFiles.length === 0 ? (
+                    <div className="content-inside-panel__body-empty">
+                      <div className="content-inside-panel__intro">
+                        <h4>{currentFolderPath.split("/").pop() ?? currentFolderPath}</h4>
+                        <p>{`Conteúdos: ${currentFolderFiles.length} itens`}</p>
+                      </div>
+                      {canGoBackFolder || canEditContents ? (
+                        <div className="content-inside-panel__cta-center">
+                          {canGoBackFolder ? (
+                            <button type="button" className="content-inside-panel__back btn-ghost" onClick={goBackFolder}>
+                              Voltar
+                            </button>
+                          ) : null}
+                          {canEditContents ? (
+                            <>
+                              <button type="button" className="btn-secondary" onClick={openFolderModal}>
+                                Adicionar Pasta
+                              </button>
+                              <button type="button" className="btn-secondary" onClick={() => pdfInputRef.current?.click()}>
+                                Adicionar PDF
+                              </button>
+                              <button type="button" className="btn-secondary" onClick={() => imageInputRef.current?.click()}>
+                                Adicionar Imagem
+                              </button>
+                            </>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <>
+                      <div className="content-inside-panel__top">
+                        <div>
+                          <h4>{currentFolderPath.split("/").pop() ?? currentFolderPath}</h4>
+                          <p>{`Conteúdos: ${currentFolderFiles.length} itens`}</p>
+                        </div>
+                        {canGoBackFolder || canEditContents ? (
+                          <div className="content-inside-panel__actions">
+                            {canGoBackFolder ? (
+                              <button type="button" className="content-inside-panel__back btn-ghost" onClick={goBackFolder}>
+                                Voltar
+                              </button>
+                            ) : null}
+                            {canEditContents ? (
+                              <>
+                                <button type="button" className="btn-secondary" onClick={openFolderModal}>
+                                  Adicionar Pasta
+                                </button>
+                                <button type="button" className="btn-secondary" onClick={() => pdfInputRef.current?.click()}>
+                                  Adicionar PDF
+                                </button>
+                                <button type="button" className="btn-secondary" onClick={() => imageInputRef.current?.click()}>
+                                  Adicionar Imagem
+                                </button>
+                              </>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="content-file-list">
+                        {currentFolderFiles.map((content) => {
+                          const isImage =
+                            content.type === "PNG" || content.type === "JPEG" || content.type === "IMAGE";
+                          const fileName = content.filePath.split(/[\\/]/).pop() ?? content.filePath;
+                          const displayName = content.displayName?.trim() || contentFileNames[content.id] || fileBaseName(fileName);
+                          return (
+                            <article key={content.id} className="content-file-item">
+                              <button
+                                type="button"
+                                className="content-file-item__icon"
+                                onClick={() => void openContentFileInNewTab(content)}
+                                title="Abrir em nova aba"
+                              >
+                                {isImage ? <FileImage size={28} /> : <FileText size={28} />}
+                              </button>
+                              <div className="content-file-item__meta">
+                                <button
+                                  type="button"
+                                  className="content-file-item__link"
+                                  onClick={() => void openContentFileInNewTab(content)}
+                                >
+                                  {displayName}
+                                </button>
+                              </div>
+                              {canEditContents ? (
+                                <button
+                                  type="button"
+                                  className="content-file-item__delete"
+                                  title="Excluir arquivo"
+                                  aria-label={`Excluir arquivo ${displayName}`}
+                                  onClick={() => requestDeleteContent(content, displayName)}
+                                >
+                                  <Trash2 size={16} aria-hidden />
+                                </button>
+                              ) : null}
+                            </article>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+                  {currentFolderPath ? (
+                    <div className="content-folders content-folders--inside">
+                      {currentFolderChildren.map((path) => (
+                        <article
+                          key={path}
+                          className={`content-folder ${
+                            (folderDirectFileCounts.get(path) ?? 0) > 0 ? "content-folder--filled" : "content-folder--empty"
+                          }`}
+                        >
+                          <button type="button" className="content-folder__open" onClick={() => setCurrentFolderPath(path)}>
+                            <div className="content-folder__icon" aria-hidden />
+                            <div className="content-folder__meta">
+                              <h4>{path.split("/").pop() ?? path}</h4>
+                              <p>{`Conteúdos: ${folderDirectFileCounts.get(path) ?? 0} itens`}</p>
+                            </div>
+                          </button>
+                          {canEditContents ? (
+                            <button
+                              type="button"
+                              className="content-folder__delete"
+                              title="Excluir pasta"
+                              aria-label={`Excluir pasta ${path.split("/").pop() ?? path}`}
+                              onClick={() => requestDeleteFolder(path)}
+                            >
+                              <Trash2 size={16} aria-hidden />
+                            </button>
+                          ) : null}
+                        </article>
+                      ))}
+                      {currentFolderChildren.length === 0 ? (
+                        <article className="content-folder content-folder--empty">
+                          <div className="content-folder__icon" aria-hidden />
+                          <div className="content-folder__meta">
+                            <h4>Nenhuma subpasta</h4>
+                            <p>Conteúdos: 0 itens</p>
+                          </div>
+                        </article>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </article>
+              ) : null}
+              {!currentFolderPath ? (
+                <div className="content-folders content-folders--root">
+                  {currentFolderChildren.map((path) => (
+                    <article
+                      key={path}
+                      className={`content-folder ${
+                        (folderDirectFileCounts.get(path) ?? 0) > 0 ? "content-folder--filled" : "content-folder--empty"
+                      }`}
+                    >
+                      <button type="button" className="content-folder__open" onClick={() => setCurrentFolderPath(path)}>
+                        <div className="content-folder__icon" aria-hidden />
+                        <div className="content-folder__meta">
+                          <h4>{path.split("/").pop() ?? path}</h4>
+                          <p>{`Conteúdos: ${folderDirectFileCounts.get(path) ?? 0} itens`}</p>
+                        </div>
+                      </button>
+                      {canEditContents ? (
+                        <button
+                          type="button"
+                          className="content-folder__delete"
+                          title="Excluir pasta"
+                          aria-label={`Excluir pasta ${path.split("/").pop() ?? path}`}
+                          onClick={() => requestDeleteFolder(path)}
+                        >
+                          <Trash2 size={16} aria-hidden />
+                        </button>
+                      ) : null}
+                    </article>
                   ))}
-                </tbody>
-              </table>
-            </article>
+                  {folderPaths.length === 0 ? null : currentFolderChildren.length === 0 ? (
+                    <article className="content-folder content-folder--empty">
+                      <div className="content-folder__icon" aria-hidden />
+                      <div className="content-folder__meta">
+                        <h4>Nenhuma subpasta</h4>
+                        <p>Conteúdos: 0 itens</p>
+                      </div>
+                    </article>
+                  ) : null}
+                </div>
+              ) : null}
+                </article>
+              )}
+            {isFolderModalOpen ? (
+              <div className="content-modal-backdrop" role="presentation" onClick={() => setIsFolderModalOpen(false)}>
+                <div className="content-modal" role="dialog" aria-modal onClick={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    className="content-modal__close"
+                    aria-label="Fechar modal"
+                    onClick={() => setIsFolderModalOpen(false)}
+                  >
+                    <X size={16} aria-hidden />
+                  </button>
+                  <h3>Nome da pasta</h3>
+                  <form className="form-grid" onSubmit={handleCreateFolder}>
+                    <label>
+                      <input
+                        value={newFolderName}
+                        onChange={(e) => setNewFolderName(e.target.value)}
+                        placeholder=""
+                        required
+                        autoFocus
+                      />
+                    </label>
+                    <div className="contents-actions">
+                      <button type="submit">Salvar</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            ) : null}
+            {isFileModalOpen ? (
+              <div className="content-modal-backdrop" role="presentation" onClick={() => setIsFileModalOpen(false)}>
+                <div className="content-modal" role="dialog" aria-modal onClick={(e) => e.stopPropagation()}>
+                  <h3>Nome do arquivo</h3>
+                  <form className="form-grid" onSubmit={(e) => void handleConfirmFileUpload(e)}>
+                    <label>
+                      <input
+                        value={uploadDisplayName}
+                        onChange={(e) => setUploadDisplayName(e.target.value)}
+                        placeholder=""
+                        required
+                        autoFocus
+                      />
+                    </label>
+                    <div className="contents-actions">
+                      <button type="button" className="btn-ghost" onClick={() => setIsFileModalOpen(false)}>
+                        Cancelar
+                      </button>
+                      <button type="submit" className="content-modal__confirm">
+                        Confirmar
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            ) : null}
+            {pendingDeleteFolderPath ? (
+              <div className="content-modal-backdrop" role="presentation" onClick={() => setPendingDeleteFolderPath("")}>
+                <div
+                  className="content-modal content-modal--confirm-delete"
+                  role="dialog"
+                  aria-modal
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <button
+                    type="button"
+                    className="content-modal__close"
+                    aria-label="Fechar confirmação"
+                    onClick={() => setPendingDeleteFolderPath("")}
+                  >
+                    <X size={16} aria-hidden />
+                  </button>
+                  <h3>Excluir pasta</h3>
+                  <p className="content-modal__description">
+                    {`Deseja excluir a pasta "${pendingDeleteFolderPath.split("/").pop() ?? pendingDeleteFolderPath}" e todo o conteúdo dela?`}
+                  </p>
+                  <div className="contents-actions">
+                    <button type="button" className="btn-ghost" onClick={() => setPendingDeleteFolderPath("")}>
+                      Cancelar
+                    </button>
+                    <button type="button" className="content-modal__danger" onClick={() => void handleConfirmDeleteFolder()}>
+                      Excluir pasta
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+            {pendingDeleteContentId ? (
+              <div
+                className="content-modal-backdrop"
+                role="presentation"
+                onClick={() => {
+                  setPendingDeleteContentId("");
+                  setPendingDeleteContentLabel("");
+                }}
+              >
+                <div
+                  className="content-modal content-modal--confirm-delete"
+                  role="dialog"
+                  aria-modal
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <button
+                    type="button"
+                    className="content-modal__close"
+                    aria-label="Fechar confirmação"
+                    onClick={() => {
+                      setPendingDeleteContentId("");
+                      setPendingDeleteContentLabel("");
+                    }}
+                  >
+                    <X size={16} aria-hidden />
+                  </button>
+                  <h3>Excluir arquivo</h3>
+                  <p className="content-modal__description">
+                    {`Deseja excluir o arquivo "${pendingDeleteContentLabel}"? Esta ação não pode ser desfeita.`}
+                  </p>
+                  <div className="contents-actions">
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      onClick={() => {
+                        setPendingDeleteContentId("");
+                        setPendingDeleteContentLabel("");
+                      }}
+                    >
+                      Cancelar
+                    </button>
+                    <button type="button" className="content-modal__danger" onClick={() => void handleConfirmDeleteContent()}>
+                      Excluir arquivo
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+            {pendingDeleteCommissionTableId ? (
+              <div
+                className="content-modal-backdrop"
+                role="presentation"
+                onClick={() => {
+                  setPendingDeleteCommissionTableId("");
+                  setPendingDeleteCommissionTableLabel("");
+                }}
+              >
+                <div className="content-modal content-modal--confirm-delete" role="dialog" aria-modal onClick={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    className="content-modal__close"
+                    aria-label="Fechar confirmação"
+                    onClick={() => {
+                      setPendingDeleteCommissionTableId("");
+                      setPendingDeleteCommissionTableLabel("");
+                    }}
+                  >
+                    <X size={16} aria-hidden />
+                  </button>
+                  <h3>Excluir tabela</h3>
+                  <p className="content-modal__description">
+                    {`Deseja excluir a tabela "${pendingDeleteCommissionTableLabel}"? Esta ação não pode ser desfeita.`}
+                  </p>
+                  <div className="contents-actions">
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      onClick={() => {
+                        setPendingDeleteCommissionTableId("");
+                        setPendingDeleteCommissionTableLabel("");
+                      }}
+                    >
+                      Cancelar
+                    </button>
+                    <button type="button" className="content-modal__danger" onClick={() => void handleDeleteCommissionTable()}>
+                      Excluir tabela
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+            {pendingDeleteProductTablesId ? (
+              <div
+                className="content-modal-backdrop"
+                role="presentation"
+                onClick={() => {
+                  setPendingDeleteProductTablesId("");
+                  setPendingDeleteProductTablesLabel("");
+                }}
+              >
+                <div className="content-modal content-modal--confirm-delete" role="dialog" aria-modal onClick={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    className="content-modal__close"
+                    aria-label="Fechar confirmação"
+                    onClick={() => {
+                      setPendingDeleteProductTablesId("");
+                      setPendingDeleteProductTablesLabel("");
+                    }}
+                  >
+                    <X size={16} aria-hidden />
+                  </button>
+                  <h3>Excluir tabelas do produto</h3>
+                  <p className="content-modal__description">
+                    {`Deseja excluir todas as tabelas do produto "${pendingDeleteProductTablesLabel}"? Esta ação não pode ser desfeita.`}
+                  </p>
+                  <div className="contents-actions">
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      onClick={() => {
+                        setPendingDeleteProductTablesId("");
+                        setPendingDeleteProductTablesLabel("");
+                      }}
+                    >
+                      Cancelar
+                    </button>
+                    <button type="button" className="content-modal__danger" onClick={() => void handleDeleteProductTables()}>
+                      Excluir tabelas
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+            </section>
           </div>
         ) : null}
         </main>

@@ -9,6 +9,7 @@ create table if not exists public.tenants (
 create table if not exists public.users (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references public.tenants(id) on delete cascade,
+  system_code text,
   full_name text not null,
   email text not null,
   role text not null,
@@ -24,17 +25,37 @@ create table if not exists public.users (
   rg text,
   birth_date date,
   address text,
+  father_name text,
+  mother_name text,
+  zip_code text,
+  street text,
+  neighborhood text,
+  city text,
+  state text,
+  address_number text,
+  address_complement text,
   identity_document_path text,
+  identity_document_back_path text,
   address_proof_path text,
   verification_code text,
   first_access_verified_at timestamptz,
   reset_code text,
+  status_reason text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  unique (tenant_id, email)
+  unique (tenant_id, email),
+  unique (tenant_id, system_code)
 );
 
 create table if not exists public.products (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references public.tenants(id) on delete cascade,
+  name text not null,
+  created_by uuid not null references public.users(id),
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.banks (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references public.tenants(id) on delete cascade,
   name text not null,
@@ -59,6 +80,7 @@ create table if not exists public.contents (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references public.tenants(id) on delete cascade,
   title text not null,
+  display_name text,
   type text not null,
   product_id uuid references public.products(id) on delete set null,
   file_path text not null,
@@ -68,12 +90,14 @@ create table if not exists public.contents (
 
 create index if not exists idx_users_tenant_id on public.users(tenant_id);
 create index if not exists idx_products_tenant_id on public.products(tenant_id);
+create index if not exists idx_banks_tenant_id on public.banks(tenant_id);
 create index if not exists idx_commission_tables_tenant_id on public.commission_tables(tenant_id);
 create index if not exists idx_contents_tenant_id on public.contents(tenant_id);
 
 alter table public.tenants enable row level security;
 alter table public.users enable row level security;
 alter table public.products enable row level security;
+alter table public.banks enable row level security;
 alter table public.commission_tables enable row level security;
 alter table public.contents enable row level security;
 
@@ -95,6 +119,12 @@ create policy "service_role_full_access_users" on public.users
 
 drop policy if exists "service_role_full_access_products" on public.products;
 create policy "service_role_full_access_products" on public.products
+  for all
+  using (auth.role() = 'service_role')
+  with check (auth.role() = 'service_role');
+
+drop policy if exists "service_role_full_access_banks" on public.banks;
+create policy "service_role_full_access_banks" on public.banks
   for all
   using (auth.role() = 'service_role')
   with check (auth.role() = 'service_role');

@@ -2,7 +2,7 @@ import express from "express";
 import fs from "node:fs/promises";
 import path from "node:path";
 import multer from "multer";
-import { z } from "zod";
+import { z, ZodError } from "zod";
 import { RequestWithAuth, requireAuth } from "./auth";
 import { config } from "./config";
 import {
@@ -10,12 +10,18 @@ import {
   blockUser,
   completeRegistration,
   createCommissionTable,
+  createBank,
   createContent,
+  deleteCommissionTable,
+  deleteCommissionTablesByProduct,
   createProduct,
+  deleteContentById,
+  deleteContentsByFolder,
   forgotPassword,
   getCurrentUserProfile,
   getInviteRegistrationContext,
   listCommissionTables,
+  listBanks,
   listContents,
   listProducts,
   listUsers,
@@ -23,20 +29,72 @@ import {
   resetPassword,
   verifyFirstAccess,
   inviteUser,
+  resetUserAccessByManager,
+  setUserLifecycleStatus,
   toPublicTenantUser,
+  toPublicTenantUserForViewer,
+  updateCommissionTable,
+  updateProductName,
+  updateUserProfileByManager,
+  getContentFileForDownload,
+  errorMessageFromUnknown,
 } from "./services";
 
 const uploadDir = path.resolve(process.cwd(), "uploads");
 const upload = multer({ dest: uploadDir });
 
+function validationErrorMessage(error: ZodError): string {
+  const issues = error.issues;
+  if (!issues?.length) {
+    return "Dados inválidos.";
+  }
+  return issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
+}
+
 export const router = express.Router();
 
 router.get("/health", (_req, res) => {
-  res.json({ ok: true, service: "credilix-acessos" });
+  res.json({
+    ok: true,
+    service: "credilix-acessos",
+    /** Se não aparecer, não é este backend (ou está desatualizado). */
+    features: { inviteEmailBeforeDb: true },
+  });
 });
 
 router.get("/branding", (_req, res) => {
   res.json(config.branding);
+});
+
+/** Proxy ViaCEP (mesma origem): evita "Failed to fetch" no browser por CORS/rede. */
+router.get("/cep/:digits", async (req, res) => {
+  try {
+    const raw = Array.isArray(req.params.digits) ? req.params.digits[0] : req.params.digits;
+    const digits = String(raw ?? "").replace(/\D/g, "");
+    if (digits.length !== 8) {
+      res.status(400).json({ message: "CEP deve ter 8 dígitos." });
+      return;
+    }
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12_000);
+    let upstream: Response;
+    try {
+      upstream = await fetch(`https://viacep.com.br/ws/${digits}/json/`, {
+        signal: controller.signal,
+        headers: { Accept: "application/json" },
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+    if (!upstream.ok) {
+      res.status(502).json({ message: "Serviço de CEP indisponível." });
+      return;
+    }
+    const data = (await upstream.json()) as unknown;
+    res.json(data);
+  } catch {
+    res.status(502).json({ message: "Não foi possível consultar o CEP. Verifique a conexão do servidor." });
+  }
 });
 
 router.post("/auth/login", async (req, res) => {
@@ -119,29 +177,53 @@ router.post(
   "/users/:id/complete-registration",
   upload.fields([
     { name: "identityDocument", maxCount: 1 },
+    { name: "identityDocumentBack", maxCount: 1 },
     { name: "addressProof", maxCount: 1 },
   ]),
   async (req, res) => {
     try {
       const userId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      const digitsCpf = z
+        .string()
+        .transform((s) => s.replace(/\D/g, ""))
+        .refine((s) => s.length === 11, "CPF deve ter 11 dígitos.");
+      const digitsCep = z
+        .string()
+        .transform((s) => s.replace(/\D/g, ""))
+        .refine((s) => s.length === 8, "CEP deve ter 8 dígitos.");
+      const uf = z
+        .string()
+        .trim()
+        .transform((s) => s.toUpperCase())
+        .refine((s) => /^[A-Z]{2}$/.test(s), "UF inválida.");
       const schema = z.object({
-        fullName: z.string().min(3),
-        cpf: z.string().min(11),
-        rg: z.string().min(5),
-        birthDate: z.string().min(8),
-        address: z.string().min(8),
+        fullName: z.string().trim().min(3),
+        cpf: digitsCpf,
+        rg: z.string().trim().min(5),
+        birthDate: z.string().trim().min(8),
+        fatherName: z.string().trim().min(3),
+        motherName: z.string().trim().min(3),
+        zipCode: digitsCep,
+        street: z.string().trim().min(3),
+        neighborhood: z.string().trim().min(2),
+        city: z.string().trim().min(2),
+        state: uf,
+        addressNumber: z.string().trim().min(1),
+        addressComplement: z.string().trim().optional().default(""),
         password: z.string().min(6),
       });
       const parsed = schema.parse(req.body);
       const files = req.files as Record<string, Express.Multer.File[]> | undefined;
       const identityPath = files?.identityDocument?.[0]?.path;
+      const identityBackPath = files?.identityDocumentBack?.[0]?.path;
       const addressProofPath = files?.addressProof?.[0]?.path;
-      if (!identityPath || !addressProofPath) {
-        throw new Error("Envie documento de identificação e comprovante de endereço.");
+      if (!identityPath || !identityBackPath || !addressProofPath) {
+        throw new Error("Envie documento de identificação (frente e verso) e comprovante de residência.");
       }
       const user = await completeRegistration(userId, {
         ...parsed,
         identityPath,
+        identityBackPath,
         addressProofPath,
       });
       res.json(toPublicTenantUser(user));
@@ -154,7 +236,8 @@ router.post(
 router.get("/users", requireAuth, async (req: RequestWithAuth, res) => {
   try {
     const users = await listUsers(req.auth!);
-    res.json(users.map(toPublicTenantUser));
+    const auth = req.auth!;
+    res.json(users.map((u) => toPublicTenantUserForViewer(u, auth)));
   } catch (error) {
     res.status(400).json({ message: error instanceof Error ? error.message : "Erro ao listar usuários." });
   }
@@ -175,16 +258,21 @@ router.post("/users/invite", requireAuth, async (req: RequestWithAuth, res) => {
         permContents: perm,
       }),
     });
-    const parsed = schema.parse(req.body);
-    const result = await inviteUser(req.auth!, parsed);
+    const parsedResult = schema.safeParse(req.body);
+    if (!parsedResult.success) {
+      res.status(400).json({ message: validationErrorMessage(parsedResult.error) });
+      return;
+    }
+    const result = await inviteUser(req.auth!, parsedResult.data);
     res.status(201).json({
       user: toPublicTenantUser(result.user),
       inviteLink: result.inviteLink,
       emailSent: result.emailSent,
-      emailError: result.emailError,
     });
   } catch (error) {
-    res.status(400).json({ message: error instanceof Error ? error.message : "Erro ao criar usuário." });
+    // eslint-disable-next-line no-console
+    console.error("[POST /api/users/invite]", error);
+    res.status(400).json({ message: errorMessageFromUnknown(error) });
   }
 });
 
@@ -217,6 +305,74 @@ router.patch("/users/:id/block", requireAuth, async (req: RequestWithAuth, res) 
   }
 });
 
+router.patch("/users/:id/status", requireAuth, async (req: RequestWithAuth, res) => {
+  try {
+    const userId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const schema = z.object({
+      status: z.enum(["INACTIVE", "BLOCKED"]),
+      reason: z.string().trim().min(3),
+    });
+    const parsed = schema.parse(req.body);
+    const user = await setUserLifecycleStatus(req.auth!, userId, parsed.status, parsed.reason);
+    res.json(toPublicTenantUser(user));
+  } catch (error) {
+    res.status(400).json({ message: error instanceof Error ? error.message : "Erro ao alterar status do usuário." });
+  }
+});
+
+router.post("/users/:id/reset-access", requireAuth, async (req: RequestWithAuth, res) => {
+  try {
+    const userId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const user = await resetUserAccessByManager(req.auth!, userId);
+    res.json({
+      message: "Reset enviado por e-mail com senha temporária.",
+      user: toPublicTenantUser(user),
+    });
+  } catch (error) {
+    res.status(400).json({ message: error instanceof Error ? error.message : "Erro ao resetar acesso do usuário." });
+  }
+});
+
+router.put("/users/:id", requireAuth, async (req: RequestWithAuth, res) => {
+  try {
+    const userId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const schema = z.object({
+      fullName: z.string().trim().min(3),
+      email: z.string().email(),
+      role: z.enum(["MASTER", "LIDER", "VENDEDOR", "SUPORTE"]),
+      cpf: z
+        .string()
+        .trim()
+        .transform((s) => s.replace(/\D/g, ""))
+        .refine((s) => s.length === 11, "CPF inválido."),
+      rg: z.string().trim().min(5),
+      birthDate: z.string().trim().min(8),
+      address: z.string().trim().min(8),
+      reason: z.string().trim().min(3),
+      fatherName: z.string().trim().optional(),
+      motherName: z.string().trim().optional(),
+      zipCode: z.string().trim().optional(),
+      street: z.string().trim().optional(),
+      neighborhood: z.string().trim().optional(),
+      city: z.string().trim().optional(),
+      state: z.string().trim().optional(),
+      addressNumber: z.string().trim().optional(),
+      addressComplement: z.string().trim().optional(),
+    });
+    const parsed = schema.parse(req.body);
+    const user = await updateUserProfileByManager(req.auth!, userId, parsed);
+    res.json(toPublicTenantUser(user));
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : error && typeof error === "object" && "message" in error && typeof (error as { message?: unknown }).message === "string"
+          ? String((error as { message: string }).message)
+          : "Erro ao editar usuário.";
+    res.status(400).json({ message });
+  }
+});
+
 router.post("/products", requireAuth, async (req: RequestWithAuth, res) => {
   try {
     const schema = z.object({ name: z.string().min(3) });
@@ -233,21 +389,50 @@ router.get("/products", requireAuth, async (req: RequestWithAuth, res) => {
   res.json(items);
 });
 
+router.post("/banks", requireAuth, async (req: RequestWithAuth, res) => {
+  try {
+    const schema = z.object({ name: z.string().min(2) });
+    const parsed = schema.parse(req.body);
+    const bank = await createBank(req.auth!, parsed.name);
+    res.status(201).json(bank);
+  } catch (error) {
+    res.status(400).json({ message: error instanceof Error ? error.message : "Erro ao criar banco." });
+  }
+});
+
+router.get("/banks", requireAuth, async (req: RequestWithAuth, res) => {
+  const items = await listBanks(req.auth!);
+  res.json(items);
+});
+
 router.post("/commission-tables", requireAuth, async (req: RequestWithAuth, res) => {
   try {
     const schema = z.object({
-      productId: z.string().min(1),
-      bank: z.string().min(1),
-      name: z.string().min(3),
-      deadline: z.string().min(2),
-      commissionPercent: z.number().positive(),
-      observation: z.string().max(1000).optional(),
+      productId: z.string().trim().min(1),
+      bank: z.string().trim().min(1),
+      name: z.string().trim().min(1),
+      deadline: z.string().trim().min(1),
+      commissionPercent: z.coerce.number().positive(),
+      observation: z.string().trim().max(1000).optional(),
     });
     const parsed = schema.parse(req.body);
     const item = await createCommissionTable(req.auth!, parsed);
     res.status(201).json(item);
   } catch (error) {
-    res.status(400).json({ message: error instanceof Error ? error.message : "Erro ao criar tabela." });
+    const unknownError = error as { message?: string; details?: string; hint?: string; code?: string } | null;
+    const message =
+      error instanceof Error
+        ? error.message
+        : typeof unknownError?.message === "string"
+          ? unknownError.message
+          : "Erro ao criar tabela.";
+    console.error("[POST /api/commission-tables] erro:", unknownError ?? error);
+    res.status(400).json({
+      message,
+      details: typeof unknownError?.details === "string" ? unknownError.details : undefined,
+      hint: typeof unknownError?.hint === "string" ? unknownError.hint : undefined,
+      code: typeof unknownError?.code === "string" ? unknownError.code : undefined,
+    });
   }
 });
 
@@ -257,12 +442,63 @@ router.get("/commission-tables", requireAuth, async (req: RequestWithAuth, res) 
   res.json(items);
 });
 
+router.patch("/commission-tables/:id", requireAuth, async (req: RequestWithAuth, res) => {
+  try {
+    const tableId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const schema = z.object({
+      bank: z.string().trim().min(1),
+      name: z.string().trim().min(1),
+      deadline: z.string().trim().min(1),
+      commissionPercent: z.coerce.number().positive(),
+      observation: z.string().trim().max(1000).optional(),
+    });
+    const parsed = schema.parse(req.body);
+    const item = await updateCommissionTable(req.auth!, tableId, parsed);
+    res.json(item);
+  } catch (error) {
+    res.status(400).json({ message: error instanceof Error ? error.message : "Erro ao editar tabela." });
+  }
+});
+
+router.delete("/commission-tables/:id", requireAuth, async (req: RequestWithAuth, res) => {
+  try {
+    const tableId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    await deleteCommissionTable(req.auth!, tableId);
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(400).json({ message: error instanceof Error ? error.message : "Erro ao excluir tabela." });
+  }
+});
+
+router.delete("/commission-tables/by-product/:productId", requireAuth, async (req: RequestWithAuth, res) => {
+  try {
+    const productId = Array.isArray(req.params.productId) ? req.params.productId[0] : req.params.productId;
+    const removed = await deleteCommissionTablesByProduct(req.auth!, productId);
+    res.json({ ok: true, removed });
+  } catch (error) {
+    res.status(400).json({ message: error instanceof Error ? error.message : "Erro ao excluir tabelas do produto." });
+  }
+});
+
+router.patch("/products/:id", requireAuth, async (req: RequestWithAuth, res) => {
+  try {
+    const productId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const schema = z.object({ name: z.string().trim().min(1) });
+    const parsed = schema.parse(req.body);
+    const product = await updateProductName(req.auth!, productId, parsed.name);
+    res.json(product);
+  } catch (error) {
+    res.status(400).json({ message: error instanceof Error ? error.message : "Erro ao editar produto." });
+  }
+});
+
 router.post("/contents", requireAuth, upload.single("file"), async (req: RequestWithAuth, res) => {
   try {
     const schema = z.object({
       title: z.string().min(3),
-      type: z.enum(["IMAGE", "PDF", "COMMISSION_TABLE", "OTHER"]),
+      type: z.enum(["PDF", "PNG", "JPEG", "IMAGE", "COMMISSION_TABLE", "OTHER"]),
       productId: z.string().optional(),
+      displayName: z.string().trim().min(1).max(180).optional(),
     });
     const parsed = schema.parse(req.body);
     if (!req.file) {
@@ -273,6 +509,7 @@ router.post("/contents", requireAuth, upload.single("file"), async (req: Request
       type: parsed.type,
       productId: parsed.productId,
       filePath: req.file.path,
+      displayName: parsed.displayName || req.file.originalname || undefined,
     });
     res.status(201).json(item);
   } catch (error) {
@@ -284,6 +521,49 @@ router.get("/contents", requireAuth, async (req: RequestWithAuth, res) => {
   const type = req.query.type?.toString();
   const items = await listContents(req.auth!, type);
   res.json(items);
+});
+
+router.get("/contents/:id/file", requireAuth, async (req: RequestWithAuth, res) => {
+  try {
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const { absolutePath, mimeType } = await getContentFileForDownload(req.auth!, id);
+    await fs.access(absolutePath);
+    res.setHeader("Content-Type", mimeType);
+    res.setHeader("Content-Disposition", "inline");
+    res.sendFile(absolutePath);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "Erro ao abrir arquivo.";
+    const status = msg === "Conteúdo não encontrado." ? 404 : 400;
+    res.status(status).json({ message: msg });
+  }
+});
+
+router.delete("/contents/folder", requireAuth, async (req: RequestWithAuth, res) => {
+  try {
+    const folderPath = typeof req.query.path === "string" ? req.query.path : "";
+    const removed = await deleteContentsByFolder(req.auth!, folderPath);
+    res.json({ removed });
+  } catch (error) {
+    res.status(400).json({ message: error instanceof Error ? error.message : "Erro ao excluir pasta." });
+  }
+});
+
+router.delete("/contents/:id", requireAuth, async (req: RequestWithAuth, res) => {
+  try {
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    await deleteContentById(req.auth!, id);
+    res.json({ ok: true });
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error("[DELETE /api/contents/:id]", error);
+    const msg =
+      error instanceof Error
+        ? error.message
+        : error && typeof error === "object" && "message" in error && typeof (error as { message: unknown }).message === "string"
+          ? String((error as { message: string }).message)
+          : "Erro ao excluir conteúdo.";
+    res.status(400).json({ message: msg });
+  }
 });
 
 router.get("/files/:fileName", requireAuth, async (req, res) => {

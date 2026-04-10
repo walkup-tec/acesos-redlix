@@ -8,6 +8,7 @@ const dbPath = path.resolve(dataDir, "db.json");
 const emptyState: DatabaseState = {
   users: [],
   products: [],
+  banks: [],
   commissionTables: [],
   contents: [],
 };
