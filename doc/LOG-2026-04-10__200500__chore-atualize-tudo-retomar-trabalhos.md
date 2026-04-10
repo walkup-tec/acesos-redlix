@@ -22,6 +22,9 @@ Rotina solicitada pelo usuário: **atualize tudo** (backup, build, documentaçã
    - Este arquivo: resumo operacional e handoff.  
    - `doc/memoria.md`: entrada com palavras-chave para a próxima sessão.
 
+5. **Git**  
+   - Commit na `main`: `c1ab920` (push para `origin/main` concluído).
+
 ## Arquivos criados ou alterados nesta tarefa
 
 - `.gitignore` (novo)  
