@@ -569,3 +569,12 @@
 
 - credilix deploy ftp github actions
 - bundle ftp acessos credilixpromotora
+
+## 2026-04-13 - Easypanel: Nixpacks Node 20 (Vite 8)
+
+- Build falhava em Node 18; adicionado `nixpacks.toml` com `nodejs_20` + `npm-10_x` e `engines.node` no `package.json`.
+- Log: `doc/LOG-2026-04-13__210000__fix-nixpacks-node20-easypanel-vite.md`.
+
+### Palavras-chave para pesquisa futura
+
+- nixpacks easypanel node 20 vite
