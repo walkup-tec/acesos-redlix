@@ -8,3 +8,4 @@ uploads/
 data/
 *.log
 .DS_Store
+ftp-bundle/

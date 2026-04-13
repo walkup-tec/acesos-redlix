@@ -9,9 +9,11 @@ import { supabase } from "./supabase";
 import { config } from "./config";
 
 const uploadsRoot = path.resolve(process.cwd(), "uploads");
+const CONTENT_FOLDER_MARKER_PREFIX = "__folder__/";
 let cachedHasSystemCodeColumn: boolean | null = null;
 let cachedHasStatusReasonColumn: boolean | null = null;
 let cachedHasContentDisplayNameColumn: boolean | null = null;
+let cachedHasCommissionObservationColumn: boolean | null = null;
 
 export function errorMessageFromUnknown(e: unknown): string {
   if (e instanceof Error) {
@@ -120,6 +122,26 @@ async function hasContentDisplayNameColumn(): Promise<boolean> {
   }
   if (typeof error === "object" && error && "code" in error && (error as { code?: unknown }).code === "42703") {
     cachedHasContentDisplayNameColumn = false;
+    return false;
+  }
+  throw error;
+}
+
+async function hasCommissionObservationColumn(): Promise<boolean> {
+  if (cachedHasCommissionObservationColumn !== null) {
+    return cachedHasCommissionObservationColumn;
+  }
+  const { error } = await supabase.from("commission_tables").select("observation").limit(1);
+  if (!error) {
+    cachedHasCommissionObservationColumn = true;
+    return true;
+  }
+  if (typeof error === "object" && error && "code" in error && (error as { code?: unknown }).code === "42703") {
+    cachedHasCommissionObservationColumn = false;
+    return false;
+  }
+  if (typeof error === "object" && error && "code" in error && (error as { code?: unknown }).code === "PGRST204") {
+    cachedHasCommissionObservationColumn = false;
     return false;
   }
   throw error;
@@ -671,7 +693,7 @@ export async function completeRegistration(
       identity_document_back_path: payload.identityBackPath,
       address_proof_path: payload.addressProofPath,
       password_hash: await bcrypt.hash(payload.password, 10),
-      status: "PENDING_APPROVAL",
+      status: "AWAITING_REVIEW",
       updated_at: nowIso(),
     })
     .eq("id", userId);
@@ -707,7 +729,7 @@ export async function approveUser(auth: AuthContext, userId: string): Promise<{ 
   if (!user) {
     throw new Error("Usuário não encontrado.");
   }
-  if (user.status !== "PENDING_APPROVAL") {
+  if (user.status !== "PENDING_APPROVAL" && user.status !== "AWAITING_REVIEW") {
     throw new Error("Usuário não está pendente de aprovação.");
   }
   user.status = "ACTIVE";
@@ -1199,7 +1221,7 @@ export async function createCommissionTable(
     createdBy: auth.userId,
     createdAt: nowIso(),
   };
-  const { error } = await supabase.from("commission_tables").insert({
+  const rowToInsert: Record<string, unknown> = {
     id: table.id,
     tenant_id: table.tenantId,
     product_id: table.productId,
@@ -1209,7 +1231,11 @@ export async function createCommissionTable(
     commission_percent: table.commissionPercent,
     created_by: table.createdBy,
     created_at: table.createdAt,
-  });
+  };
+  if (await hasCommissionObservationColumn()) {
+    rowToInsert.observation = table.observation?.trim() ? table.observation.trim() : null;
+  }
+  const { error } = await supabase.from("commission_tables").insert(rowToInsert);
   if (error) {
     throw error;
   }
@@ -1245,15 +1271,18 @@ export async function updateCommissionTable(
   payload: { bank: string; name: string; deadline: string; commissionPercent: number; observation?: string },
 ): Promise<CommissionTable> {
   assertCanEditCommissionTables(auth);
+  const updatePayload: Record<string, unknown> = {
+    bank: payload.bank,
+    name: payload.name,
+    deadline: payload.deadline,
+    commission_percent: payload.commissionPercent,
+  };
+  if (await hasCommissionObservationColumn()) {
+    updatePayload.observation = payload.observation?.trim() ? payload.observation.trim() : null;
+  }
   const { error } = await supabase
     .from("commission_tables")
-    .update({
-      bank: payload.bank,
-      name: payload.name,
-      deadline: payload.deadline,
-      commission_percent: payload.commissionPercent,
-      observation: payload.observation?.trim() ? payload.observation.trim() : null,
-    })
+    .update(updatePayload)
     .eq("id", tableId)
     .eq("tenant_id", auth.tenantId);
   if (error) {
@@ -1391,6 +1420,46 @@ export async function createContent(
     throw error;
   }
   return content;
+}
+
+export async function createContentFolder(auth: AuthContext, folderPath: string): Promise<{ path: string }> {
+  assertCanEditContents(auth);
+  const normalized = folderPath
+    .split("/")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join("/");
+  if (!normalized) {
+    throw new Error("Nome da pasta é obrigatório.");
+  }
+  const markerPath = `${CONTENT_FOLDER_MARKER_PREFIX}${normalized}`;
+  const { data: existing, error: listError } = await supabase
+    .from("contents")
+    .select("id")
+    .eq("tenant_id", auth.tenantId)
+    .eq("type", "FOLDER")
+    .eq("file_path", markerPath)
+    .limit(1);
+  if (listError) {
+    throw listError;
+  }
+  if ((existing ?? []).length > 0) {
+    return { path: normalized };
+  }
+  const { error } = await supabase.from("contents").insert({
+    id: uuid(),
+    tenant_id: auth.tenantId,
+    title: normalized,
+    type: "FOLDER",
+    product_id: null,
+    file_path: markerPath,
+    created_by: auth.userId,
+    created_at: nowIso(),
+  });
+  if (error) {
+    throw error;
+  }
+  return { path: normalized };
 }
 
 export async function listContents(auth: AuthContext, type?: string): Promise<ContentItem[]> {

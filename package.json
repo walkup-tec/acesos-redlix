@@ -5,6 +5,8 @@
   "main": "dist/server.js",
   "scripts": {
     "build:web": "npm run build --prefix web",
+    "bundle:ftp": "node scripts/prepare-ftp-bundle.mjs",
+    "start:prod": "node dist/server.js",
     "dev": "cross-env PORT=5050 APP_BASE_URL=http://127.0.0.1:5050 tsx watch src/server.ts",
     "dev:ui": "npm run build:web && cross-env PORT=5050 APP_BASE_URL=http://127.0.0.1:5050 tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",

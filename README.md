@@ -103,3 +103,13 @@ Padrão do projeto: **5050** (evita conflito com outros serviços que usam **500
 
 - Painel: `http://127.0.0.1:5050/`
 - Health: `http://127.0.0.1:5050/api/health` (deve incluir `"service":"credilix-acessos"`)
+
+## Publicação em produção (FTP + Node)
+
+Domínio alvo documentado: **https://acessos.credilixpromotora.com.br/**
+
+1. **GitHub Actions** (mesmo modelo do projeto Waba): configure os secrets `FTP_HOST`, `FTP_USERNAME`, `FTP_PASSWORD`, `FTP_REMOTE_DIR` e faça push em `master` ou `main`, ou execute o workflow manualmente. Ver **`doc/deploy-ftp-github.md`**.
+2. Localmente pode gerar o pacote com **`npm run bundle:ftp`** (pastas `dist/`, `web/dist/` e dependências de produção dentro de **`ftp-bundle/`**).
+3. **FTP só copia ficheiros** — no servidor é necessário **Node.js** a correr **`node dist/server.js`** (ou PM2/systemd) e um ficheiro **`.env`** com `APP_BASE_URL` em HTTPS. Alojamento só PHP/static sem Node não serve este projeto tal como está.
+
+- Arranque em produção: `npm run start:prod` (após `npm run build && npm run build:web` no servidor) ou apenas `node dist/server.js` se o build já foi feito no CI/pacote.

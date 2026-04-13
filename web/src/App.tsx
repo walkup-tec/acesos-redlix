@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   FileImage,
   FileText,
+  Info,
   LogOut,
   Menu,
   PanelLeftClose,
@@ -161,17 +162,19 @@ type User = {
   permContents?: boolean;
 };
 
-function formatUserLifecycleStatus(u: User): "Ativo" | "Pendente" | "Inativo" {
+function formatUserLifecycleStatus(u: User): "Ativo" | "Pendente" | "Inativo" | "Aguardando Ativação" {
   const status = (u.status ?? "").toUpperCase();
   if (status === "INACTIVE" || status === "BLOCKED") return "Inativo";
   if (status === "ACTIVE") return "Ativo";
+  if (status === "AWAITING_REVIEW" || status === "PENDING_APPROVAL") return "Aguardando Ativação";
   return "Pendente";
 }
 
-function userStatusClassName(u: User): "status--active" | "status--inactive" | "status--pending" {
+function userStatusClassName(u: User): "status--active" | "status--inactive" | "status--pending" | "status--review" {
   const status = formatUserLifecycleStatus(u);
   if (status === "Ativo") return "status--active";
   if (status === "Inativo") return "status--inactive";
+  if (status === "Aguardando Ativação") return "status--review";
   return "status--pending";
 }
 
@@ -258,6 +261,15 @@ type CommissionTable = {
   productId: string;
 };
 
+type CommissionTableEditDraft = {
+  id: string;
+  bank: string;
+  name: string;
+  deadline: string;
+  commissionPercent: string;
+  observation: string;
+};
+
 type Content = {
   id: string;
   title: string;
@@ -276,9 +288,36 @@ function normalizeFolderPath(input: string): string {
     .join("/");
 }
 
+function isContentFolderMarker(item: Content): boolean {
+  return item.type === "FOLDER" && item.filePath.startsWith("__folder__/");
+}
+
 function fileBaseName(fileName: string): string {
   const dot = fileName.lastIndexOf(".");
   return dot > 0 ? fileName.slice(0, dot) : fileName;
+}
+
+function detectMimeTypeFromBytes(bytes: Uint8Array): string | null {
+  if (bytes.length >= 4 && bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46) {
+    return "application/pdf";
+  }
+  if (
+    bytes.length >= 8 &&
+    bytes[0] === 0x89 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x4e &&
+    bytes[3] === 0x47 &&
+    bytes[4] === 0x0d &&
+    bytes[5] === 0x0a &&
+    bytes[6] === 0x1a &&
+    bytes[7] === 0x0a
+  ) {
+    return "image/png";
+  }
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+    return "image/jpeg";
+  }
+  return null;
 }
 
 function formatBirthDateToBr(value: string): string {
@@ -399,6 +438,7 @@ function App() {
     "",
   );
   const [pendingUserActionTarget, setPendingUserActionTarget] = useState<User | null>(null);
+  const [selectedUserDetails, setSelectedUserDetails] = useState<User | null>(null);
   const [pendingUserActionReason, setPendingUserActionReason] = useState("");
   const [userActionLoading, setUserActionLoading] = useState(false);
   const [editUserDraft, setEditUserDraft] = useState({
@@ -444,6 +484,8 @@ function App() {
   const [pendingDeleteCommissionTableLabel, setPendingDeleteCommissionTableLabel] = useState("");
   const [pendingDeleteProductTablesId, setPendingDeleteProductTablesId] = useState("");
   const [pendingDeleteProductTablesLabel, setPendingDeleteProductTablesLabel] = useState("");
+  const [editingCommissionTable, setEditingCommissionTable] = useState<CommissionTableEditDraft | null>(null);
+  const [editingProduct, setEditingProduct] = useState<{ id: string; name: string } | null>(null);
   const [newFolderName, setNewFolderName] = useState("");
   const [uploadDisplayName, setUploadDisplayName] = useState("");
   const [pendingUploadFile, setPendingUploadFile] = useState<File | null>(null);
@@ -453,9 +495,31 @@ function App() {
   const [theme, setTheme] = useState<"light" | "dark">(() => readStoredTheme());
   const pdfInputRef = useRef<HTMLInputElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const [observationHoverTableId, setObservationHoverTableId] = useState<string | null>(null);
+  const [observationPinnedTableId, setObservationPinnedTableId] = useState<string | null>(null);
 
   useEffect(() => {
     void loadBranding();
+  }, []);
+
+  useEffect(() => {
+    const onDocMouseDown = (e: MouseEvent) => {
+      const el = e.target;
+      if (el instanceof Element && el.closest(".table-observation-wrap")) return;
+      setObservationPinnedTableId(null);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setObservationPinnedTableId(null);
+        setObservationHoverTableId(null);
+      }
+    };
+    document.addEventListener("mousedown", onDocMouseDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocMouseDown);
+      document.removeEventListener("keydown", onKey);
+    };
   }, []);
 
   useEffect(() => {
@@ -482,6 +546,18 @@ function App() {
       /* ignore */
     }
   }, [contentFileNames]);
+
+  useEffect(() => {
+    if (!panelNotice) return;
+    const timer = window.setTimeout(() => setPanelNotice(""), 7_000);
+    return () => window.clearTimeout(timer);
+  }, [panelNotice]);
+
+  useEffect(() => {
+    if (!error) return;
+    const timer = window.setTimeout(() => setError(""), 7_000);
+    return () => window.clearTimeout(timer);
+  }, [error]);
 
   useEffect(() => {
     if (!token) {
@@ -800,8 +876,9 @@ function App() {
   /** Arquivos gravados exatamente nesta pasta (para lista e contagem nas telas). */
   const folderDirectFileCounts = useMemo(() => {
     const counts = new Map<string, number>();
+    const realContents = contents.filter((item) => !isContentFolderMarker(item));
     for (const folder of folderPaths) {
-      const count = contents.filter((item) => normalizeFolderPath(item.title) === folder).length;
+      const count = realContents.filter((item) => normalizeFolderPath(item.title) === folder).length;
       counts.set(folder, count);
     }
     return counts;
@@ -813,7 +890,7 @@ function App() {
   );
 
   const currentFolderFiles = useMemo(
-    () => contents.filter((item) => normalizeFolderPath(item.title) === currentFolderPath),
+    () => contents.filter((item) => normalizeFolderPath(item.title) === currentFolderPath && !isContentFolderMarker(item)),
     [contents, currentFolderPath],
   );
 
@@ -986,11 +1063,18 @@ function App() {
         throw new Error("fetch failed");
       }
       const blob = await r.blob();
-      const url = URL.createObjectURL(blob);
+      const data = await blob.arrayBuffer();
+      const bytes = new Uint8Array(data);
+      const detectedMime = detectMimeTypeFromBytes(bytes);
+      const safeBlob =
+        detectedMime && (blob.type === "application/octet-stream" || blob.type === "")
+          ? new Blob([data], { type: detectedMime })
+          : blob;
+      const url = URL.createObjectURL(safeBlob);
       window.open(url, "_blank", "noopener,noreferrer");
       window.setTimeout(() => URL.revokeObjectURL(url), 120_000);
     } catch {
-      window.alert(`Não foi possível abrir: ${label}`);
+      setError(`Não foi possível abrir: ${label}`);
     }
   }
 
@@ -999,6 +1083,10 @@ function App() {
     setPendingUserActionTarget(null);
     setPendingUserActionReason("");
     setUserActionLoading(false);
+  }
+
+  function closeUserDetailsModal(): void {
+    setSelectedUserDetails(null);
   }
 
   async function handleConfirmUserStatusAction(): Promise<void> {
@@ -1149,7 +1237,6 @@ function App() {
         const normalizedName = productName.trim();
         if (!normalizedName) {
           const msg = "Nome do produto é obrigatório.";
-          window.alert(msg);
           setError(msg);
           return;
         }
@@ -1158,7 +1245,6 @@ function App() {
       } else {
         if (!selectedProductValue) {
           const msg = "Nome do produto é obrigatório.";
-          window.alert(msg);
           setError(msg);
           return;
         }
@@ -1171,27 +1257,36 @@ function App() {
           const normalizedBankName = bankName.trim();
           if (!normalizedBankName) {
             const msg = "Banco é obrigatório.";
-            window.alert(msg);
             setError(msg);
             return;
           }
           if (banksApiUnavailable) {
             bankValue = normalizedBankName;
           } else {
-            const createdBank = await apiPost<Bank>("/banks", { name: normalizedBankName });
-            bankValue = createdBank.name;
+            try {
+              const createdBank = await apiPost<Bank>("/banks", { name: normalizedBankName });
+              bankValue = createdBank.name;
+            } catch {
+              // Fallback compatível com ambientes sem endpoint/estrutura de bancos estável.
+              setBanksApiUnavailable(true);
+              setSelectedBankValue("");
+              bankValue = normalizedBankName;
+              try {
+                localStorage.setItem(BANKS_API_UNAVAILABLE_KEY, "1");
+              } catch {
+                /* ignore */
+              }
+            }
           }
         } else {
           if (!selectedBankValue) {
             const msg = "Banco é obrigatório.";
-            window.alert(msg);
             setError(msg);
             return;
           }
           const selectedBank = banks.find((bank) => bank.id === selectedBankValue);
           if (!selectedBank) {
             const msg = "Banco selecionado não encontrado.";
-            window.alert(msg);
             setError(msg);
             return;
           }
@@ -1201,13 +1296,11 @@ function App() {
         const normalizedDeadline = tableDeadline.trim();
         if (!normalizedTableName) {
           const msg = "Nome da tabela é obrigatório.";
-          window.alert(msg);
           setError(msg);
           return;
         }
         if (!normalizedDeadline) {
           const msg = "Prazo é obrigatório.";
-          window.alert(msg);
           setError(msg);
           return;
         }
@@ -1215,7 +1308,6 @@ function App() {
         const commissionValue = Number(normalizedCommission);
         if (!Number.isFinite(commissionValue) || commissionValue <= 0) {
           const msg = "Comissão é obrigatória.";
-          window.alert(msg);
           setError(msg);
           return;
         }
@@ -1246,24 +1338,34 @@ function App() {
 
   async function handleEditCommissionTable(target: CommissionTable): Promise<void> {
     if (!canEditCommissionTables) return;
-    const bank = window.prompt("Banco:", target.bank)?.trim();
-    if (!bank) return;
-    const name = window.prompt("Nome da Tabela:", target.name)?.trim();
-    if (!name) return;
-    const deadline = window.prompt("Prazo:", target.deadline)?.trim();
-    if (!deadline) return;
-    const commissionRaw = window.prompt("Comissão (%):", String(target.commissionPercent))?.trim();
-    if (!commissionRaw) return;
-    const commissionPercent = Number(String(commissionRaw).replace(",", "."));
+    setEditingCommissionTable({
+      id: target.id,
+      bank: target.bank,
+      name: target.name,
+      deadline: target.deadline,
+      commissionPercent: String(target.commissionPercent),
+      observation: target.observation ?? "",
+    });
+  }
+
+  async function handleSaveCommissionTableEdit(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (!canEditCommissionTables || !editingCommissionTable) return;
+    const bank = editingCommissionTable.bank.trim();
+    const name = editingCommissionTable.name.trim();
+    const deadline = editingCommissionTable.deadline.trim();
+    const commissionPercent = Number(editingCommissionTable.commissionPercent.replace(",", ".").trim());
+    if (!bank || !name || !deadline) {
+      setError("Preencha banco, nome da tabela e prazo.");
+      return;
+    }
     if (!Number.isFinite(commissionPercent) || commissionPercent <= 0) {
       setError("Comissão inválida.");
       return;
     }
-    const observationInput = window.prompt("Observação (opcional):", target.observation ?? "");
-    if (observationInput === null) return;
     setError("");
     try {
-      const response = await fetch(apiUrl(`/commission-tables/${encodeURIComponent(target.id)}`), {
+      const response = await fetch(apiUrl(`/commission-tables/${encodeURIComponent(editingCommissionTable.id)}`), {
         method: "PATCH",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -1274,13 +1376,14 @@ function App() {
           name,
           deadline,
           commissionPercent,
-          observation: observationInput.trim(),
+          observation: editingCommissionTable.observation.trim(),
         }),
       });
       const body = (await response.json().catch(() => ({}))) as { message?: string };
       if (!response.ok) {
         throw new Error(body.message ?? "Não foi possível editar a tabela.");
       }
+      setEditingCommissionTable(null);
       await refreshAll();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Erro ao editar tabela.");
@@ -1317,11 +1420,20 @@ function App() {
 
   async function handleEditProductCardTitle(product: Product): Promise<void> {
     if (!canEditCommissionTables) return;
-    const next = window.prompt("Novo nome do produto:", product.name)?.trim();
-    if (!next) return;
+    setEditingProduct({ id: product.id, name: product.name });
+  }
+
+  async function handleSaveProductName(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (!canEditCommissionTables || !editingProduct) return;
+    const next = editingProduct.name.trim();
+    if (!next) {
+      setError("Nome do produto é obrigatório.");
+      return;
+    }
     setError("");
     try {
-      const response = await fetch(apiUrl(`/products/${encodeURIComponent(product.id)}`), {
+      const response = await fetch(apiUrl(`/products/${encodeURIComponent(editingProduct.id)}`), {
         method: "PATCH",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -1333,6 +1445,7 @@ function App() {
       if (!response.ok) {
         throw new Error(body.message ?? "Não foi possível editar o produto.");
       }
+      setEditingProduct(null);
       await refreshAll();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Erro ao editar produto.");
@@ -1372,7 +1485,6 @@ function App() {
     if (!currentFolderPath) {
       const msg = "Entre em uma pasta para adicionar arquivos.";
       setError(msg);
-      window.alert(msg);
       return;
     }
     const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
@@ -1388,7 +1500,6 @@ function App() {
             ? "Formato inválido: selecione um arquivo .png."
             : "Formato inválido: selecione um arquivo .jpg ou .jpeg.";
       setError(msg);
-      window.alert(msg);
       return;
     }
     const targetFolder = currentFolderPath;
@@ -1420,22 +1531,39 @@ function App() {
     }
   }
 
-  function handleCreateFolder(event: FormEvent<HTMLFormElement>): void {
+  async function handleCreateFolder(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     setError("");
     const normalizedName = newFolderName.trim();
     if (!normalizedName) {
       const msg = "Nome da pasta é obrigatório.";
       setError(msg);
-      window.alert(msg);
       return;
     }
     const nextPath = normalizeFolderPath(currentFolderPath ? `${currentFolderPath}/${normalizedName}` : normalizedName);
     if (!nextPath) {
       const msg = "Pasta inválida.";
       setError(msg);
-      window.alert(msg);
       return;
+    }
+    if (canEditContents) {
+      try {
+        await apiPost("/contents/folder", { path: nextPath });
+      } catch (requestError) {
+        // Fallback legado: mantém pasta local se endpoint não estiver disponível no ambiente.
+        if (requestError instanceof Error && /404|Cannot POST/i.test(requestError.message)) {
+          if (!manualFolders.includes(nextPath) && !folderPaths.includes(nextPath)) {
+            setManualFolders((prev) => [...prev, nextPath]);
+          }
+          setCurrentFolderPath(currentFolderPath);
+          setNewFolderName("");
+          setIsFolderModalOpen(false);
+          return;
+        }
+        setError(requestError instanceof Error ? requestError.message : "Não foi possível criar a pasta.");
+        return;
+      }
+      await refreshAll();
     }
     if (!manualFolders.includes(nextPath) && !folderPaths.includes(nextPath)) {
       setManualFolders((prev) => [...prev, nextPath]);
@@ -1483,7 +1611,6 @@ function App() {
     if (!safeName) {
       const msg = "Nome do arquivo é obrigatório.";
       setError(msg);
-      window.alert(msg);
       return;
     }
     await uploadContentFile(pendingUploadFile, pendingUploadType, safeName);
@@ -1886,7 +2013,7 @@ function App() {
                   </thead>
                   <tbody>
                     {users.map((user) => (
-                      <tr key={user.id}>
+                      <tr key={user.id} className="users-row-clickable" onClick={() => setSelectedUserDetails(user)}>
                         <td className="users-col-id">{user.systemCode ?? "—"}</td>
                         <td className="users-col-cpf">{user.profile?.cpf || "—"}</td>
                         <td>{displayNameInUserList(user)}</td>
@@ -1898,7 +2025,7 @@ function App() {
                             {formatUserLifecycleStatus(user)}
                           </span>
                         </td>
-                        <td className="user-actions-cell">
+                        <td className="user-actions-cell" onClick={(e) => e.stopPropagation()}>
                           {canCreateUsers ? (
                             <div className="user-actions-inline">
                               <button
@@ -1919,7 +2046,8 @@ function App() {
                               >
                                 <RotateCcw size={14} aria-hidden />
                               </button>
-                              {(user.status ?? "").toUpperCase() === "PENDING_APPROVAL" ? (
+                              {(user.status ?? "").toUpperCase() === "PENDING_APPROVAL" ||
+                              (user.status ?? "").toUpperCase() === "AWAITING_REVIEW" ? (
                                 <button
                                   type="button"
                                   className="btn-secondary user-inline-btn user-inline-btn--approve"
@@ -1950,6 +2078,139 @@ function App() {
                   </tbody>
                 </table>
               </article>
+            </div>
+          ) : null}
+
+          {selectedUserDetails ? (
+            <div className="modal-backdrop" role="presentation" onClick={closeUserDetailsModal}>
+              <div className="card modal-dialog" role="dialog" aria-modal onClick={(e) => e.stopPropagation()}>
+                <div className="modal-dialog__head">
+                  <h3 className="modal-dialog__title">Detalhes do usuário</h3>
+                  <button type="button" className="modal-dialog__close" onClick={closeUserDetailsModal} aria-label="Fechar">
+                    <X size={16} aria-hidden />
+                  </button>
+                </div>
+                <div className="form-grid form-grid--left">
+                  <label>
+                    ID
+                    <input value={selectedUserDetails.systemCode ?? "—"} readOnly />
+                  </label>
+                  <label>
+                    Nome
+                    <input value={displayNameInUserList(selectedUserDetails)} readOnly />
+                  </label>
+                  <label>
+                    E-mail
+                    <input value={selectedUserDetails.email ?? "—"} readOnly />
+                  </label>
+                  <label>
+                    Perfil
+                    <input value={selectedUserDetails.role ?? "—"} readOnly />
+                  </label>
+                  <label>
+                    Status
+                    <input value={formatUserLifecycleStatus(selectedUserDetails)} readOnly />
+                  </label>
+                  <label>
+                    CPF
+                    <input value={selectedUserDetails.profile?.cpf ?? "—"} readOnly />
+                  </label>
+                  <label>
+                    RG
+                    <input value={selectedUserDetails.profile?.rg ?? "—"} readOnly />
+                  </label>
+                  <label>
+                    Data de nascimento
+                    <input value={formatBirthDateToBr(selectedUserDetails.profile?.birthDate ?? "") || "—"} readOnly />
+                  </label>
+                  <label>
+                    Endereço
+                    <input value={selectedUserDetails.profile?.address ?? "—"} readOnly />
+                  </label>
+                  <label>
+                    CEP
+                    <input value={selectedUserDetails.profile?.zipCode ?? "—"} readOnly />
+                  </label>
+                  <label>
+                    Rua
+                    <input value={selectedUserDetails.profile?.street ?? "—"} readOnly />
+                  </label>
+                  <label>
+                    Bairro
+                    <input value={selectedUserDetails.profile?.neighborhood ?? "—"} readOnly />
+                  </label>
+                  <label>
+                    Cidade
+                    <input value={selectedUserDetails.profile?.city ?? "—"} readOnly />
+                  </label>
+                  <label>
+                    Estado
+                    <input value={selectedUserDetails.profile?.state ?? "—"} readOnly />
+                  </label>
+                  <label>
+                    Número
+                    <input value={selectedUserDetails.profile?.addressNumber ?? "—"} readOnly />
+                  </label>
+                  <label>
+                    Complemento
+                    <input value={selectedUserDetails.profile?.addressComplement ?? "—"} readOnly />
+                  </label>
+                  <label>
+                    Nome do pai
+                    <input value={selectedUserDetails.profile?.fatherName ?? "—"} readOnly />
+                  </label>
+                  <label>
+                    Nome da mãe
+                    <input value={selectedUserDetails.profile?.motherName ?? "—"} readOnly />
+                  </label>
+                </div>
+                <div className="user-edit-docs" style={{ marginTop: "1rem" }}>
+                  <h4 className="onboarding-subtitle" style={{ marginTop: 0 }}>
+                    Documentos enviados
+                  </h4>
+                  <div className="user-edit-docs__actions">
+                    {selectedUserDetails.documents?.identityPath ? (
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={() => void openUserUploadedFile(selectedUserDetails.documents?.identityPath, "Documento (frente)")}
+                      >
+                        Ver documento (frente)
+                      </button>
+                    ) : null}
+                    {selectedUserDetails.documents?.identityBackPath ? (
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={() => void openUserUploadedFile(selectedUserDetails.documents?.identityBackPath, "Documento (verso)")}
+                      >
+                        Ver documento (verso)
+                      </button>
+                    ) : null}
+                    {selectedUserDetails.documents?.addressProofPath ? (
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={() =>
+                          void openUserUploadedFile(selectedUserDetails.documents?.addressProofPath, "Comprovante de residência")
+                        }
+                      >
+                        Ver comprovante de residência
+                      </button>
+                    ) : null}
+                    {!selectedUserDetails.documents?.identityPath &&
+                    !selectedUserDetails.documents?.identityBackPath &&
+                    !selectedUserDetails.documents?.addressProofPath ? (
+                      <p className="muted">Nenhum documento anexado para este usuário.</p>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="modal-dialog__actions">
+                  <button type="button" className="btn-ghost" onClick={closeUserDetailsModal}>
+                    Fechar
+                  </button>
+                </div>
+              </div>
             </div>
           ) : null}
 
@@ -2470,7 +2731,7 @@ function App() {
                           <th>Nome da Tabela</th>
                           <th>Prazo</th>
                           <th>% Comissão</th>
-                          <th>PDF</th>
+                          <th>Obs.</th>
                           {canEditCommissionTables ? <th>Ações</th> : null}
                         </tr>
                       </thead>
@@ -2481,7 +2742,50 @@ function App() {
                             <td>{table.name}</td>
                             <td>{table.deadline}</td>
                             <td>{table.commissionPercent}</td>
-                            <td className="cell-muted">{table.observation || "—"}</td>
+                            <td className="cell-muted cell-observation">
+                              {table.observation ? (
+                                <div
+                                  className="table-observation-wrap"
+                                  onMouseEnter={() => setObservationHoverTableId(table.id)}
+                                  onMouseLeave={() =>
+                                    setObservationHoverTableId((cur) =>
+                                      cur === table.id ? null : cur
+                                    )
+                                  }
+                                >
+                                  <button
+                                    type="button"
+                                    className="table-observation-icon"
+                                    aria-expanded={
+                                      observationPinnedTableId === table.id ||
+                                      observationHoverTableId === table.id
+                                    }
+                                    aria-controls={`observation-flag-${table.id}`}
+                                    aria-label={`Observação: ${table.observation}`}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setObservationPinnedTableId((p) =>
+                                        p === table.id ? null : table.id
+                                      );
+                                    }}
+                                  >
+                                    <Info size={22} strokeWidth={2.25} aria-hidden />
+                                  </button>
+                                  {observationPinnedTableId === table.id ||
+                                  observationHoverTableId === table.id ? (
+                                    <div
+                                      id={`observation-flag-${table.id}`}
+                                      className="table-observation-flag"
+                                      role="tooltip"
+                                    >
+                                      {table.observation}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              ) : (
+                                "—"
+                              )}
+                            </td>
                             {canEditCommissionTables ? (
                               <td>
                                 <div className="table-actions-inline">
@@ -2879,93 +3183,198 @@ function App() {
                 </div>
               </div>
             ) : null}
-            {pendingDeleteCommissionTableId ? (
-              <div
-                className="content-modal-backdrop"
-                role="presentation"
+            </section>
+          </div>
+        ) : null}
+        {editingCommissionTable ? (
+          <div className="content-modal-backdrop" role="presentation" onClick={() => setEditingCommissionTable(null)}>
+            <div className="content-modal" role="dialog" aria-modal onClick={(e) => e.stopPropagation()}>
+              <button
+                type="button"
+                className="content-modal__close"
+                aria-label="Fechar edição da tabela"
+                onClick={() => setEditingCommissionTable(null)}
+              >
+                <X size={16} aria-hidden />
+              </button>
+              <h3>Editar tabela</h3>
+              <form className="form-grid" onSubmit={(e) => void handleSaveCommissionTableEdit(e)}>
+                <label>
+                  Banco
+                  <input
+                    value={editingCommissionTable.bank}
+                    onChange={(e) => setEditingCommissionTable((prev) => (prev ? { ...prev, bank: e.target.value } : prev))}
+                    required
+                    autoFocus
+                  />
+                </label>
+                <label>
+                  Nome da Tabela
+                  <input
+                    value={editingCommissionTable.name}
+                    onChange={(e) => setEditingCommissionTable((prev) => (prev ? { ...prev, name: e.target.value } : prev))}
+                    required
+                  />
+                </label>
+                <label>
+                  Prazo
+                  <input
+                    value={editingCommissionTable.deadline}
+                    onChange={(e) => setEditingCommissionTable((prev) => (prev ? { ...prev, deadline: e.target.value } : prev))}
+                    required
+                  />
+                </label>
+                <label>
+                  Comissão %
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={editingCommissionTable.commissionPercent}
+                    onChange={(e) =>
+                      setEditingCommissionTable((prev) => (prev ? { ...prev, commissionPercent: e.target.value } : prev))
+                    }
+                    required
+                  />
+                </label>
+                <label>
+                  Observação (opcional)
+                  <input
+                    value={editingCommissionTable.observation}
+                    onChange={(e) =>
+                      setEditingCommissionTable((prev) => (prev ? { ...prev, observation: e.target.value } : prev))
+                    }
+                  />
+                </label>
+                <div className="contents-actions">
+                  <button type="button" className="btn-ghost" onClick={() => setEditingCommissionTable(null)}>
+                    Cancelar
+                  </button>
+                  <button type="submit" className="content-modal__confirm">
+                    Salvar
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        ) : null}
+        {editingProduct ? (
+          <div className="content-modal-backdrop" role="presentation" onClick={() => setEditingProduct(null)}>
+            <div className="content-modal" role="dialog" aria-modal onClick={(e) => e.stopPropagation()}>
+              <button
+                type="button"
+                className="content-modal__close"
+                aria-label="Fechar edição do produto"
+                onClick={() => setEditingProduct(null)}
+              >
+                <X size={16} aria-hidden />
+              </button>
+              <h3>Editar nome do produto</h3>
+              <form className="form-grid" onSubmit={(e) => void handleSaveProductName(e)}>
+                <label>
+                  Nome do produto
+                  <input
+                    value={editingProduct.name}
+                    onChange={(e) => setEditingProduct((prev) => (prev ? { ...prev, name: e.target.value } : prev))}
+                    required
+                    autoFocus
+                  />
+                </label>
+                <div className="contents-actions">
+                  <button type="button" className="btn-ghost" onClick={() => setEditingProduct(null)}>
+                    Cancelar
+                  </button>
+                  <button type="submit" className="content-modal__confirm">
+                    Salvar
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        ) : null}
+        {pendingDeleteCommissionTableId ? (
+          <div
+            className="content-modal-backdrop"
+            role="presentation"
+            onClick={() => {
+              setPendingDeleteCommissionTableId("");
+              setPendingDeleteCommissionTableLabel("");
+            }}
+          >
+            <div className="content-modal content-modal--confirm-delete" role="dialog" aria-modal onClick={(e) => e.stopPropagation()}>
+              <button
+                type="button"
+                className="content-modal__close"
+                aria-label="Fechar confirmação"
                 onClick={() => {
                   setPendingDeleteCommissionTableId("");
                   setPendingDeleteCommissionTableLabel("");
                 }}
               >
-                <div className="content-modal content-modal--confirm-delete" role="dialog" aria-modal onClick={(e) => e.stopPropagation()}>
-                  <button
-                    type="button"
-                    className="content-modal__close"
-                    aria-label="Fechar confirmação"
-                    onClick={() => {
-                      setPendingDeleteCommissionTableId("");
-                      setPendingDeleteCommissionTableLabel("");
-                    }}
-                  >
-                    <X size={16} aria-hidden />
-                  </button>
-                  <h3>Excluir tabela</h3>
-                  <p className="content-modal__description">
-                    {`Deseja excluir a tabela "${pendingDeleteCommissionTableLabel}"? Esta ação não pode ser desfeita.`}
-                  </p>
-                  <div className="contents-actions">
-                    <button
-                      type="button"
-                      className="btn-ghost"
-                      onClick={() => {
-                        setPendingDeleteCommissionTableId("");
-                        setPendingDeleteCommissionTableLabel("");
-                      }}
-                    >
-                      Cancelar
-                    </button>
-                    <button type="button" className="content-modal__danger" onClick={() => void handleDeleteCommissionTable()}>
-                      Excluir tabela
-                    </button>
-                  </div>
-                </div>
+                <X size={16} aria-hidden />
+              </button>
+              <h3>Excluir tabela</h3>
+              <p className="content-modal__description">
+                {`Deseja excluir a tabela "${pendingDeleteCommissionTableLabel}"? Esta ação não pode ser desfeita.`}
+              </p>
+              <div className="contents-actions">
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={() => {
+                    setPendingDeleteCommissionTableId("");
+                    setPendingDeleteCommissionTableLabel("");
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button type="button" className="content-modal__danger" onClick={() => void handleDeleteCommissionTable()}>
+                  Excluir tabela
+                </button>
               </div>
-            ) : null}
-            {pendingDeleteProductTablesId ? (
-              <div
-                className="content-modal-backdrop"
-                role="presentation"
+            </div>
+          </div>
+        ) : null}
+        {pendingDeleteProductTablesId ? (
+          <div
+            className="content-modal-backdrop"
+            role="presentation"
+            onClick={() => {
+              setPendingDeleteProductTablesId("");
+              setPendingDeleteProductTablesLabel("");
+            }}
+          >
+            <div className="content-modal content-modal--confirm-delete" role="dialog" aria-modal onClick={(e) => e.stopPropagation()}>
+              <button
+                type="button"
+                className="content-modal__close"
+                aria-label="Fechar confirmação"
                 onClick={() => {
                   setPendingDeleteProductTablesId("");
                   setPendingDeleteProductTablesLabel("");
                 }}
               >
-                <div className="content-modal content-modal--confirm-delete" role="dialog" aria-modal onClick={(e) => e.stopPropagation()}>
-                  <button
-                    type="button"
-                    className="content-modal__close"
-                    aria-label="Fechar confirmação"
-                    onClick={() => {
-                      setPendingDeleteProductTablesId("");
-                      setPendingDeleteProductTablesLabel("");
-                    }}
-                  >
-                    <X size={16} aria-hidden />
-                  </button>
-                  <h3>Excluir tabelas do produto</h3>
-                  <p className="content-modal__description">
-                    {`Deseja excluir todas as tabelas do produto "${pendingDeleteProductTablesLabel}"? Esta ação não pode ser desfeita.`}
-                  </p>
-                  <div className="contents-actions">
-                    <button
-                      type="button"
-                      className="btn-ghost"
-                      onClick={() => {
-                        setPendingDeleteProductTablesId("");
-                        setPendingDeleteProductTablesLabel("");
-                      }}
-                    >
-                      Cancelar
-                    </button>
-                    <button type="button" className="content-modal__danger" onClick={() => void handleDeleteProductTables()}>
-                      Excluir tabelas
-                    </button>
-                  </div>
-                </div>
+                <X size={16} aria-hidden />
+              </button>
+              <h3>Excluir tabelas do produto</h3>
+              <p className="content-modal__description">
+                {`Deseja excluir todas as tabelas do produto "${pendingDeleteProductTablesLabel}"? Esta ação não pode ser desfeita.`}
+              </p>
+              <div className="contents-actions">
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={() => {
+                    setPendingDeleteProductTablesId("");
+                    setPendingDeleteProductTablesLabel("");
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button type="button" className="content-modal__danger" onClick={() => void handleDeleteProductTables()}>
+                  Excluir tabelas
+                </button>
               </div>
-            ) : null}
-            </section>
+            </div>
           </div>
         ) : null}
         </main>

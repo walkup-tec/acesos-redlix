@@ -12,6 +12,7 @@ import {
   createCommissionTable,
   createBank,
   createContent,
+  createContentFolder,
   deleteCommissionTable,
   deleteCommissionTablesByProduct,
   createProduct,
@@ -456,7 +457,15 @@ router.patch("/commission-tables/:id", requireAuth, async (req: RequestWithAuth,
     const item = await updateCommissionTable(req.auth!, tableId, parsed);
     res.json(item);
   } catch (error) {
-    res.status(400).json({ message: error instanceof Error ? error.message : "Erro ao editar tabela." });
+    const unknown = error as { message?: unknown; details?: unknown; hint?: unknown; code?: unknown } | undefined;
+    const message = error instanceof Error ? error.message : typeof unknown?.message === "string" ? unknown.message : "Erro ao editar tabela.";
+    console.error("[PATCH /api/commission-tables/:id] erro:", error);
+    res.status(400).json({
+      message,
+      details: typeof unknown?.details === "string" ? unknown.details : undefined,
+      hint: typeof unknown?.hint === "string" ? unknown.hint : undefined,
+      code: typeof unknown?.code === "string" ? unknown.code : undefined,
+    });
   }
 });
 
@@ -514,6 +523,17 @@ router.post("/contents", requireAuth, upload.single("file"), async (req: Request
     res.status(201).json(item);
   } catch (error) {
     res.status(400).json({ message: error instanceof Error ? error.message : "Erro ao enviar conteúdo." });
+  }
+});
+
+router.post("/contents/folder", requireAuth, async (req: RequestWithAuth, res) => {
+  try {
+    const schema = z.object({ path: z.string().trim().min(1) });
+    const parsed = schema.parse(req.body);
+    const folder = await createContentFolder(req.auth!, parsed.path);
+    res.status(201).json(folder);
+  } catch (error) {
+    res.status(400).json({ message: error instanceof Error ? error.message : "Erro ao criar pasta." });
   }
 });
 

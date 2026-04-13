@@ -431,3 +431,141 @@
 - backup D para E robocopy
 - gitignore dist uploads data
 - retomar trabalhos main acesos-redlix
+
+## 2026-04-13 - Fix login Failed to fetch (API offline)
+
+- Erro de login identificado como indisponibilidade do backend local (`127.0.0.1:5050`).
+- API iniciada com `npm run dev` em `D:\Credilix-acessos`.
+- Healthcheck e login do master validados com sucesso após subir o serviço.
+- Log detalhado: `doc/LOG-2026-04-13__101500__fix-login-failed-to-fetch-api-offline.md`.
+
+### Palavras-chave para pesquisa futura
+
+- failed to fetch login credilix
+- api 5050 offline
+- npm run dev backend credilix
+
+## 2026-04-13 - Padronizacao: sem alertas nativos
+
+- Removidos `window.alert` e `window.prompt` restantes em `web/src/App.tsx`.
+- Edição de tabela de comissão e edição de produto migradas para modais internos do sistema.
+- Build do frontend executado após ajuste: `npm run build:web`.
+- Log detalhado: `doc/LOG-2026-04-13__103500__fix-remover-alertas-nativos-e-usar-modais-sistema.md`.
+
+### Palavras-chave para pesquisa futura
+
+- sem alertas nativos navegador
+- modal interno editar tabela
+- modal interno editar produto
+
+## 2026-04-13 - Fix salvar edição de comissão
+
+- Erro ao salvar edição de comissão identificado como incompatibilidade de schema (`PGRST204`): coluna `observation` ausente em `commission_tables` no ambiente atual.
+- Backend ajustado para atualizar tabela sem depender desse campo (`src/services.ts`).
+- Frontend ajustado para não enviar `observation` no PATCH da edição de comissão (`web/src/App.tsx`).
+- Log detalhado: `doc/LOG-2026-04-13__104800__fix-editar-comissao-coluna-observation-ausente.md`.
+
+### Palavras-chave para pesquisa futura
+
+- erro editar tabela comissao 400
+- pgrst204 observation ausente
+- patch commission table fix
+
+## 2026-04-13 - Fix criar tabela com fallback de banco
+
+- Fluxo de criação de tabela estava falhando quando `POST /api/banks` retornava erro no ambiente atual.
+- Frontend ajustado para fallback automático: usa banco digitado e mantém criação da tabela sem bloquear a operação.
+- Build do frontend executado após ajuste.
+- Log detalhado: `doc/LOG-2026-04-13__110200__fix-criar-tabela-fallback-banco.md`.
+
+### Palavras-chave para pesquisa futura
+
+- erro criar banco 400
+- fallback bancos api indisponivel
+- criar tabela comissao sem travar
+
+## 2026-04-13 - Pastas de conteúdos compartilhadas
+
+- Corrigido problema de pasta criada no MASTER não aparecer para VENDEDOR.
+- Implementado `POST /api/contents/folder` com persistência de marcador `type: "FOLDER"` no backend.
+- Frontend passou a criar pasta no backend e filtrar marcadores da lista de arquivos/contagens.
+- Log detalhado: `doc/LOG-2026-04-13__111800__fix-pastas-compartilhadas-entre-usuarios.md`.
+
+### Palavras-chave para pesquisa futura
+
+- pasta compartilhada entre usuarios
+- folder marker contents
+- post api contents folder
+
+## 2026-04-13 - Exclusão de usuário para reenvio de convite
+
+- Usuário `somaconecta@gmail.com` removido de `public.users` para permitir recriação via convite.
+- Verificação concluída: antes 1 registro, depois 0 registros.
+- Log detalhado: `doc/LOG-2026-04-13__113800__delete-user-email-somaconecta.md`.
+
+### Palavras-chave para pesquisa futura
+
+- excluir usuario por email
+- limpar cadastro convite
+- somaconecta gmail delete
+
+## 2026-04-13 - Novo status de ciclo de convite
+
+- Implementado status `AWAITING_REVIEW` para indicar formulário concluído aguardando ativação por master/gestão.
+- Backend atualizado para setar esse status no `completeRegistration`.
+- Frontend atualizado para exibir rótulo `Aguardando Avaliação` com semáforo azul.
+- Compatibilidade mantida: aprovação aceita `PENDING_APPROVAL` e `AWAITING_REVIEW`.
+- Log detalhado: `doc/LOG-2026-04-13__121500__feat-status-aguardando-avaliacao-usuarios.md`.
+
+### Palavras-chave para pesquisa futura
+
+- status aguardando avaliacao
+- semaforo azul usuario
+- awaiting review complete registration
+
+## 2026-04-13 - Modal de detalhes ao clicar no usuário
+
+- Tabela de usuários agora abre modal de detalhes em modo leitura ao clicar na linha.
+- Modal mostra dados completos de cadastro e acessos para documentos anexados no onboarding.
+- Coluna de ações segue funcional sem abrir modal acidental (stopPropagation nos botões).
+- Log detalhado: `doc/LOG-2026-04-13__123500__feat-modal-detalhes-usuario-ao-clicar-linha.md`.
+
+### Palavras-chave para pesquisa futura
+
+- modal detalhes cadastro usuario
+- clique linha usuarios abre modal
+- ver documentos onboarding usuario
+
+## 2026-04-13 - Observação de tabela (coluna ausente)
+
+- Causa de não exibir ícone de observação: banco sem coluna `commission_tables.observation` (`42703`).
+- Migration criada para correção: `supabase/migration-2026-04-13-add-commission-observation.sql`.
+- Após aplicar migration no Supabase, observações passam a persistir e o ícone `Obs.` aparece no frontend.
+
+### Palavras-chave para pesquisa futura
+
+- commission_tables observation 42703
+- migration coluna observation
+- obs tooltip tabela comissao
+
+## 2026-04-13 - UI: flag de observação (amarelo de marca)
+
+- Coluna **Obs.**: ícone `Info` maior (22px), cor `var(--brand-secondary)`; popover “flag” acima do ícone com fundo/borda derivados da mesma cor (claro/escuro).
+- Abre com **hover** ou **clique** (clique fixa até clicar fora, outro ícone ou `Escape`).
+- Log: `doc/LOG-2026-04-13__150000__update-ui-observacao-flag-brand-secondary.md`.
+
+### Palavras-chave para pesquisa futura
+
+- table-observation-flag brand-secondary
+- observacao comissao popover hover pin
+
+## 2026-04-13 - Deploy FTP (paridade Waba) + domínio acessos
+
+- Mesmo modelo do Waba: `npm run bundle:ftp` → `ftp-bundle/`, GitHub Actions com `SamKirkland/FTP-Deploy-Action`, secrets `FTP_HOST`, `FTP_USERNAME`, `FTP_PASSWORD`, `FTP_REMOTE_DIR`.
+- Domínio documentado: **https://acessos.credilixpromotora.com.br/** — após FTP é obrigatório **Node** + `.env` (`APP_BASE_URL` HTTPS); FTP sozinho não executa a API.
+- Log: `doc/LOG-2026-04-13__171000__feat-deploy-ftp-paridade-waba-acessos-dominio.md`, guia `doc/deploy-ftp-github.md`.
+
+### Palavras-chave para pesquisa futura
+
+- credilix deploy ftp github actions
+- bundle ftp acessos credilixpromotora

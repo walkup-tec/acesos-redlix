@@ -1,0 +1,51 @@
+# Deploy automático: após push na branch configurada, gera ftp-bundle e envia por FTP.
+# Mesmo padrão documentado no projeto Waba (SamKirkland/FTP-Deploy-Action).
+#
+# GitHub → Settings → Secrets and variables → Actions:
+#   FTP_HOST        → ex.: ftp.acessos.credilixpromotora.com.br ou IP do servidor
+#   FTP_USERNAME
+#   FTP_PASSWORD
+#   FTP_REMOTE_DIR  → raiz do site (ex.: /public_html ou /domains/acessos.../public_html)
+#
+# FTPS / porta: https://github.com/SamKirkland/FTP-Deploy-Action
+#
+# Doc: doc/deploy-ftp-github.md
+
+name: Deploy FTP (bundle)
+
+on:
+  push:
+    branches:
+      - master
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Instalar dependências (raiz + web) e gerar ftp-bundle
+        run: |
+          npm ci
+          cd web && npm ci && cd ..
+          npm run bundle:ftp
+
+      - name: Enviar para FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.6
+        with:
+          server: ${{ secrets.FTP_HOST }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          server-dir: ${{ secrets.FTP_REMOTE_DIR }}
+          local-dir: ./ftp-bundle/
+          log-level: standard

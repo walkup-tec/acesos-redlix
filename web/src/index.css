@@ -1101,6 +1101,11 @@ td {
   box-shadow: 0 0 0 2px rgba(234, 179, 8, 0.25);
 }
 
+.user-status.status--review .user-status__dot {
+  background: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.25);
+}
+
 .users-col-id {
   min-width: 88px;
   white-space: nowrap;
@@ -1119,6 +1124,10 @@ td {
   justify-content: flex-end;
   width: 6.85rem;
   margin-left: auto;
+}
+
+.users-row-clickable {
+  cursor: pointer;
 }
 
 .users-col-action-title {
@@ -2065,6 +2074,82 @@ body[data-theme="dark"] .content-modal .content-modal__confirm:hover {
   color: var(--brand-fg-muted);
   font-size: 0.88rem;
   max-width: 12rem;
+}
+
+.cell-observation {
+  overflow: visible;
+  vertical-align: middle;
+}
+
+.table-observation-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.table-observation-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.15rem;
+  margin: 0;
+  border: none;
+  background: transparent;
+  color: var(--brand-secondary);
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  line-height: 0;
+  transition: color 0.15s ease, transform 0.15s ease;
+}
+
+.table-observation-icon:hover,
+.table-observation-icon:focus-visible {
+  color: color-mix(in srgb, var(--brand-secondary) 85%, var(--brand-fg));
+  transform: scale(1.06);
+  outline: 2px solid color-mix(in srgb, var(--brand-secondary) 55%, transparent);
+  outline-offset: 2px;
+}
+
+.table-observation-flag {
+  position: absolute;
+  z-index: 80;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 11rem;
+  max-width: min(22rem, 72vw);
+  padding: 0.65rem 0.85rem;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  font-weight: 500;
+  color: var(--brand-fg);
+  background: color-mix(in srgb, var(--brand-secondary) 26%, #fff);
+  border: 1px solid color-mix(in srgb, var(--brand-secondary) 50%, transparent);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  white-space: pre-wrap;
+  word-break: break-word;
+  pointer-events: none;
+}
+
+.table-observation-flag::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-left: -7px;
+  border: 7px solid transparent;
+  border-top-color: color-mix(in srgb, var(--brand-secondary) 50%, transparent);
+}
+
+body[data-theme="dark"] .table-observation-flag {
+  background: color-mix(in srgb, var(--brand-secondary) 22%, var(--card-bg));
+  border-color: color-mix(in srgb, var(--brand-secondary) 45%, transparent);
+}
+
+body[data-theme="dark"] .table-observation-flag::after {
+  border-top-color: color-mix(in srgb, var(--brand-secondary) 45%, transparent);
 }
 
 .btn-secondary {

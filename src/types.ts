@@ -1,8 +1,8 @@
 export type UserRole = "MASTER" | "LIDER" | "VENDEDOR" | "SUPORTE";
 
-export type UserStatus = "INVITED" | "PENDING_APPROVAL" | "PENDING" | "ACTIVE" | "INACTIVE" | "BLOCKED";
+export type UserStatus = "INVITED" | "PENDING_APPROVAL" | "AWAITING_REVIEW" | "PENDING" | "ACTIVE" | "INACTIVE" | "BLOCKED";
 
-export type ContentType = "PDF" | "PNG" | "JPEG" | "IMAGE" | "COMMISSION_TABLE" | "OTHER";
+export type ContentType = "PDF" | "PNG" | "JPEG" | "IMAGE" | "COMMISSION_TABLE" | "OTHER" | "FOLDER";
 
 export interface TenantUser {
   id: string;
