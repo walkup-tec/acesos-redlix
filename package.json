@@ -24,6 +24,9 @@
     "url": "https://github.com/walkup-tec/acesos-redlix/issues"
   },
   "homepage": "https://github.com/walkup-tec/acesos-redlix#readme",
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "dependencies": {
     "@supabase/supabase-js": "^2.101.1",
     "bcryptjs": "^3.0.3",
