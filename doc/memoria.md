@@ -591,3 +591,14 @@
 
 - ativar usuario bloqueado
 - status reason flag usuarios
+
+## 2026-04-14 - Limpeza da flag de motivo ao reativar
+
+- Ajustado ciclo de status para limpar `status_reason` quando usuário volta para `ACTIVE`.
+- Com isso, a flag de motivo desaparece após reativação, mantendo apenas motivos vigentes de bloqueio/inativação.
+- Log: `doc/LOG-2026-04-14__072108__fix-limpar-flag-motivo-ao-reativar.md`.
+
+### Palavras-chave para pesquisa futura
+
+- status_reason limpar active
+- reativar usuario remover flag

@@ -958,8 +958,7 @@ export async function setUserLifecycleStatus(
     updated_at: nowIso(),
   };
   if (await hasStatusReasonColumn()) {
-    updatePayload.status_reason =
-      cleanedReason || (status === "ACTIVE" ? "Usuário reativado por gestor." : null);
+    updatePayload.status_reason = status === "ACTIVE" ? null : cleanedReason;
   }
   const { error: updateError } = await supabase
     .from("users")
@@ -968,7 +967,7 @@ export async function setUserLifecycleStatus(
     .eq("tenant_id", auth.tenantId);
   if (updateError) throw updateError;
   user.status = status;
-  user.statusReason = cleanedReason || (status === "ACTIVE" ? "Usuário reativado por gestor." : undefined);
+  user.statusReason = status === "ACTIVE" ? undefined : cleanedReason;
   return user;
 }
 
