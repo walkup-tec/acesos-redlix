@@ -884,3 +884,8 @@
 
 - perm-fieldset min-width mobile
 - checkbox-row flex shrink usuarios
+
+## 2026-04-14 - Usuários: select e botão Atualizar mesma altura
+
+- Toolbar: regra única para filtro e .btn-secondary.card-toolbar__action-btn com mesmo min-height e padding.
+- Log: doc/LOG-2026-04-14__203000__style-usuarios-toolbar-select-altura-botao.md.

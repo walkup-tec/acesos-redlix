@@ -2309,9 +2309,17 @@ body[data-theme="light"] .content-modal__description {
 .users-toolbar__filter-select {
   width: auto;
   min-width: 10.5rem;
-  padding: 0.36rem 0.6rem;
   border-radius: 0.7rem;
+}
+
+/* Mesma caixa de clique / altura: o botão herdava padding maior de `.btn-secondary` que o select */
+.users-toolbar__actions .users-toolbar__filter-select,
+.users-toolbar__actions .btn-secondary.card-toolbar__action-btn {
+  min-height: 2.125rem;
+  padding: 0.45rem 0.75rem;
   font-size: 0.84rem;
+  line-height: 1;
+  box-sizing: border-box;
 }
 
 .users-toolbar__search-row {
