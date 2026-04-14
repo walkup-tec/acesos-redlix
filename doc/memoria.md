@@ -863,3 +863,14 @@
 
 - mobile overflow-x viewport credilix-acessos
 - table-wrap horizontal scroll only
+
+## 2026-04-14 - Mobile: Bootstrap row dentro de shell-body (comissão)
+
+- Corrigido deslocamento da **Tabela de Comissão** no iPhone: .row do Bootstrap tinha margens negativas sem .container, estourando a largura de .shell-body.
+- Em ≤900px: .shell-body .row com margens horizontais zeradas; colunas com max-width: 100% e min-width: 0; .products-filters em uma coluna.
+- Log: doc/LOG-2026-04-14__195500__fix-mobile-bootstrap-row-comissao-viewport.md.
+
+### Palavras-chave para pesquisa futura
+
+- bootstrap row shell-body credilix
+- comissão mobile layout overflow

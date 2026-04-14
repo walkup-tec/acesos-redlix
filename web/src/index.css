@@ -2100,6 +2100,25 @@ body[data-theme="light"] .content-modal__description {
     overflow-x: hidden;
   }
 
+  /*
+   * Bootstrap `.row` usa margin horizontal negativo para alinhar `.col-*` com o `.container`.
+   * Aqui o conteúdo está só dentro de `.shell-body` (já com padding): as margens negativas
+   * ultrapassam a área útil e geram deslocamento / scroll horizontal (ex.: Tabela de Comissão).
+   */
+  .shell-body .row {
+    margin-left: 0;
+    margin-right: 0;
+  }
+
+  .shell-body .row > [class*="col"] {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .products-filters {
+    grid-template-columns: 1fr;
+  }
+
   .shell-nav__top {
     flex-direction: row;
     align-items: center;
