@@ -423,6 +423,8 @@ function App() {
   const [tables, setTables] = useState<CommissionTable[]>([]);
   const [contents, setContents] = useState<Content[]>([]);
   const [usersRefreshLoading, setUsersRefreshLoading] = useState(false);
+  const [usersStatusFilter, setUsersStatusFilter] = useState<"ALL" | "ACTIVE" | "INACTIVE" | "PENDING" | "REVIEW">("ALL");
+  const [usersSearchQuery, setUsersSearchQuery] = useState("");
 
   const [loginEmail, setLoginEmail] = useState("master@credilix.local");
   const [loginPassword, setLoginPassword] = useState("Master@123");
@@ -690,6 +692,35 @@ function App() {
       setUsersRefreshLoading(false);
     }
   }, [token]);
+
+  const filteredUsers = useMemo(() => {
+    const query = usersSearchQuery.trim().toLowerCase();
+    const queryDigits = query.replace(/\D/g, "");
+
+    return users.filter((user) => {
+      const lifecycle = formatUserLifecycleStatus(user);
+      if (usersStatusFilter === "ACTIVE" && lifecycle !== "Ativo") return false;
+      if (usersStatusFilter === "INACTIVE" && lifecycle !== "Inativo") return false;
+      if (usersStatusFilter === "PENDING" && lifecycle !== "Pendente") return false;
+      if (usersStatusFilter === "REVIEW" && lifecycle !== "Aguardando Ativação") return false;
+      if (!query) return true;
+
+      const name = displayNameInUserList(user).toLowerCase();
+      const email = (user.email ?? "").toLowerCase();
+      const systemCode = (user.systemCode ?? "").toLowerCase();
+      const id = (user.id ?? "").toLowerCase();
+      const cpfRaw = user.profile?.cpf ?? "";
+      const cpfDigits = cpfRaw.replace(/\D/g, "");
+
+      if (name.includes(query)) return true;
+      if (email.includes(query)) return true;
+      if (systemCode.includes(query)) return true;
+      if (id.includes(query)) return true;
+      if (cpfRaw.toLowerCase().includes(query)) return true;
+      if (queryDigits && cpfDigits.includes(queryDigits)) return true;
+      return false;
+    });
+  }, [users, usersSearchQuery, usersStatusFilter]);
 
   useEffect(() => {
     if (!token) {
@@ -2035,18 +2066,48 @@ function App() {
               ) : null}
 
               <article className="card table-wrap">
-                <div className="card-toolbar">
-                  <h3 className="card-toolbar__title">Usuários</h3>
-                  <div className="card-toolbar__actions">
-                    <button
-                      type="button"
-                      className="btn-secondary card-toolbar__action-btn"
-                      onClick={() => void handleRefreshUsers()}
-                      disabled={usersRefreshLoading}
-                    >
-                      <RefreshCw size={16} aria-hidden />
-                      {usersRefreshLoading ? "Atualizando..." : "Atualizar"}
-                    </button>
+                <div className="card-toolbar users-toolbar">
+                  <div className="users-toolbar__top">
+                    <h3 className="card-toolbar__title">Usuários</h3>
+                    <div className="card-toolbar__actions">
+                      <label className="users-toolbar__filter-label" htmlFor="users-status-filter">
+                        Status
+                      </label>
+                      <select
+                        id="users-status-filter"
+                        className="users-toolbar__filter-select"
+                        value={usersStatusFilter}
+                        onChange={(e) =>
+                          setUsersStatusFilter(
+                            e.target.value as "ALL" | "ACTIVE" | "INACTIVE" | "PENDING" | "REVIEW",
+                          )
+                        }
+                      >
+                        <option value="ALL">Todos</option>
+                        <option value="ACTIVE">Ativo</option>
+                        <option value="INACTIVE">Inativo</option>
+                        <option value="PENDING">Pendente</option>
+                        <option value="REVIEW">Aguardando ativação</option>
+                      </select>
+                      <button
+                        type="button"
+                        className="btn-secondary card-toolbar__action-btn"
+                        onClick={() => void handleRefreshUsers()}
+                        disabled={usersRefreshLoading}
+                      >
+                        <RefreshCw size={16} aria-hidden />
+                        {usersRefreshLoading ? "Atualizando..." : "Atualizar"}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="users-toolbar__search-row">
+                    <input
+                      type="search"
+                      className="users-toolbar__search-input"
+                      placeholder="Pesquisar por ID, CPF, nome ou e-mail"
+                      value={usersSearchQuery}
+                      onChange={(e) => setUsersSearchQuery(e.target.value)}
+                    />
                   </div>
                 </div>
                 <table>
@@ -2064,7 +2125,7 @@ function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {users.map((user) => (
+                    {filteredUsers.map((user) => (
                       <tr key={user.id} className="users-row-clickable" onClick={() => setSelectedUserDetails(user)}>
                         <td className="users-col-id">{user.systemCode ?? "—"}</td>
                         <td className="users-col-cpf">{user.profile?.cpf || "—"}</td>
@@ -2169,6 +2230,13 @@ function App() {
                         </td>
                       </tr>
                     ))}
+                    {filteredUsers.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="cell-muted">
+                          Nenhum usuário encontrado com os filtros atuais.
+                        </td>
+                      </tr>
+                    ) : null}
                   </tbody>
                 </table>
               </article>

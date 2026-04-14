@@ -762,3 +762,16 @@
 - style botao atualizar
 - users toolbar
 - padrao botoes
+
+## 2026-04-14 - Filtro e pesquisa na lista de usuários
+
+- Adicionado filtro por status ao lado do botão `Atualizar` no módulo de usuários.
+- Adicionado campo de pesquisa alinhado à direita abaixo do título `Usuários`.
+- Busca cobre `ID`, `CPF`, `nome` e `e-mail`.
+- Log: `doc/LOG-2026-04-14__165228__feat-filtro-status-e-pesquisa-usuarios.md`.
+
+### Palavras-chave
+
+- filtro usuarios
+- pesquisa usuarios
+- status users

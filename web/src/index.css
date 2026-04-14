@@ -2157,6 +2157,45 @@ body[data-theme="light"] .content-modal__description {
   gap: 0.5rem;
 }
 
+.users-toolbar {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.users-toolbar__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.users-toolbar__filter-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--brand-fg-muted);
+}
+
+.users-toolbar__filter-select {
+  width: auto;
+  min-width: 10.5rem;
+  padding: 0.36rem 0.6rem;
+  border-radius: 0.7rem;
+  font-size: 0.84rem;
+}
+
+.users-toolbar__search-row {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.users-toolbar__search-input {
+  width: min(24rem, 100%);
+  padding: 0.44rem 0.7rem;
+  border-radius: 0.7rem;
+  font-size: 0.85rem;
+}
+
 .card-toolbar__action-btn {
   display: inline-flex;
   align-items: center;
