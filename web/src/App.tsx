@@ -2066,10 +2066,10 @@ function App() {
               ) : null}
 
               <article className="card table-wrap">
-                <div className="card-toolbar users-toolbar">
+                <div className="users-toolbar">
                   <div className="users-toolbar__top">
-                    <h3 className="card-toolbar__title">Usuários</h3>
-                    <div className="card-toolbar__actions">
+                    <h3 className="users-toolbar__title card-toolbar__title">Usuários</h3>
+                    <div className="users-toolbar__actions">
                       <select
                         id="users-status-filter"
                         className="users-toolbar__filter-select"

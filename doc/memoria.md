@@ -801,3 +801,9 @@
 - toolbar usuarios largura 100
 - filtro atualizar direita
 - pesquisa esquerda
+
+## 2026-04-14 - Layout toolbar usuários (stack correto)
+
+- Removido conflito card-toolbar + users-toolbar que empurrava linhas para flex row.
+- Toolbar em coluna: linha 1 título | filtro+atualizar; linha 2 pesquisa à esquerda.
+- Log: doc/LOG--users-toolbar-stack-layout.md
