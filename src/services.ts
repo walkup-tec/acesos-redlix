@@ -1002,7 +1002,13 @@ export async function resetUserAccessByManager(auth: AuthContext, userId: string
 
   const subject = `Reset de acesso — ${config.branding.name}`;
   const text = `Olá ${user.fullName},\n\nSeu acesso ao painel ${config.branding.name} foi resetado por um gestor.\n\nSenha temporária: ${temporaryPassword}\n\nRecomendamos trocar a senha no próximo acesso.\n`;
-  await trySendMail({ to: user.email, subject, text });
+  if (config.mail.mode !== "smtp") {
+    throw new Error("Envio de e-mail indisponível: configure MAIL_MODE=smtp no ambiente.");
+  }
+  const mailResult = await trySendMail({ to: user.email, subject, text });
+  if (!mailResult.ok) {
+    throw new Error(`Não foi possível enviar o e-mail de reset: ${mailResult.error}`);
+  }
   return user;
 }
 
