@@ -1,4 +1,4 @@
-﻿# Mem?ria consolidada do projeto
+# Mem?ria consolidada do projeto
 
 ## 2026-04-06 - Supabase exclusivo + identidade visual Credilix
 
@@ -874,3 +874,13 @@
 
 - bootstrap row shell-body credilix
 - comissão mobile layout overflow
+
+## 2026-04-14 - Mobile Usuários: sem scroll horizontal (fieldset + flex)
+
+- Corrigido overflow lateral na tela **Usuários**: `fieldset`/`.perm-fieldset` com min-width: 0 e max-width: 100%; .checkbox-row e texto com min-width: 0 e overflow-wrap: break-word; .module-grid/.card e input/select reforçados; .shell-body com overflow-x: hidden ≤900px; toolbar de usuários com wrap e select flexível.
+- Log: doc/LOG-2026-04-14__201000__fix-mobile-usuarios-scroll-horizontal-fieldset-flex.md.
+
+### Palavras-chave para pesquisa futura
+
+- perm-fieldset min-width mobile
+- checkbox-row flex shrink usuarios

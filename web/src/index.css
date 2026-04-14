@@ -299,6 +299,8 @@ button {
 input,
 select {
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: 0.75rem 0.85rem;
@@ -1005,6 +1007,8 @@ body[data-theme="dark"] .content-empty-state p {
   border-radius: var(--radius-lg);
   padding: 1rem;
   box-shadow: var(--shadow-card);
+  max-width: 100%;
+  min-width: 0;
 }
 
 .card h3 {
@@ -1016,6 +1020,8 @@ body[data-theme="dark"] .content-empty-state p {
   display: grid;
   gap: 0.9rem;
   grid-template-columns: 1fr;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .module-grid--products {
@@ -2119,6 +2125,21 @@ body[data-theme="light"] .content-modal__description {
     grid-template-columns: 1fr;
   }
 
+  /* Reforço: filhos largos (fieldset, flex, selects) não ampliam a área de scroll do documento */
+  .shell-body {
+    overflow-x: hidden;
+  }
+
+  .users-toolbar__top {
+    flex-wrap: wrap;
+  }
+
+  .users-toolbar__filter-select {
+    min-width: 0;
+    flex: 1 1 10.5rem;
+    max-width: 100%;
+  }
+
   .shell-nav__top {
     flex-direction: row;
     align-items: center;
@@ -2624,6 +2645,9 @@ body[data-theme="dark"] .modal-dialog .muted {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: rgba(255, 255, 255, 0.5);
+  /* <fieldset> padrão usa min-inline-size: min-content e pode estourar a viewport no mobile */
+  min-width: 0;
+  max-width: 100%;
 }
 
 .perm-fieldset__legend {
@@ -2641,6 +2665,8 @@ body[data-theme="dark"] .modal-dialog .muted {
   font-size: 0.9rem;
   line-height: 1.35;
   cursor: pointer;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .checkbox-row:first-of-type {
@@ -2661,6 +2687,8 @@ body[data-theme="dark"] .modal-dialog .muted {
 
 .checkbox-row span {
   flex: 1;
+  min-width: 0;
+  overflow-wrap: break-word;
 }
 
 /* Dentro da pasta aberta, subpastas sem card/borda e no mesmo fluxo dos arquivos. */
