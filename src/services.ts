@@ -1032,7 +1032,13 @@ export async function forgotPassword(email: string): Promise<void> {
   const base = config.appBaseUrl.replace(/\/$/, "");
   const subject = `Redefinição de senha — ${config.branding.name}`;
   const text = `Olá,\n\nFoi solicitada uma nova senha para o painel ${config.branding.name}.\n\nCódigo de 6 dígitos: ${user.resetCode}\n\nUse este código com seu e-mail na tela de login (opção esqueci a senha) ou em ${base}/ativar.\n\nSe não foi você, ignore este e-mail.\n`;
-  await trySendMail({ to: user.email, subject, text });
+  if (config.mail.mode !== "smtp") {
+    throw new Error("Envio de e-mail indisponível: configure MAIL_MODE=smtp no ambiente.");
+  }
+  const mailResult = await trySendMail({ to: user.email, subject, text });
+  if (!mailResult.ok) {
+    throw new Error(`Não foi possível enviar o código por e-mail: ${mailResult.error}`);
+  }
 }
 
 export async function validateResetCode(email: string, resetCode: string): Promise<void> {
