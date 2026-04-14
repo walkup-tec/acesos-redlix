@@ -623,3 +623,13 @@
 
 - modal modo claro cinza escuro
 - contraste texto modal light
+
+## 2026-04-14 - Modal excluir tabela com contraste correto no claro
+
+- Corrigido content-modal__description no modo claro para cinza escuro, mantendo escuro sem alterações.
+- Log: $log.
+
+### Palavras-chave para pesquisa futura
+
+- content-modal description light contrast
+- excluir tabela modal legibilidade

@@ -1970,6 +1970,10 @@ body[data-theme="dark"] .content-modal .content-modal__confirm:hover {
   line-height: 1.45;
 }
 
+body[data-theme="light"] .content-modal__description {
+  color: #4b5563;
+}
+
 .content-modal .content-modal__danger {
   background: linear-gradient(135deg, #be123c 0%, #e11d48 100%);
   border: 1px solid rgba(244, 63, 94, 0.5);
