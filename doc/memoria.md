@@ -806,5 +806,6 @@
 
 - Removido conflito card-toolbar + users-toolbar que empurrava linhas para flex row.
 - Toolbar em coluna: linha 1 título | filtro+atualizar; linha 2 pesquisa à esquerda.
-- Log: doc/LOG--users-toolbar-stack-layout.md
+- Log: doc/LOG-2026-04-14__174500__fix-users-toolbar-stack-layout.md
+
 
