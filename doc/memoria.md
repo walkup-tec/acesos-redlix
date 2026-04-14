@@ -579,3 +579,15 @@
 
 - nixpacks easypanel node 20 vite
 
+
+## 2026-04-14 - Usuários: ativar após bloqueio + flag de motivo
+
+- Ação de usuário agora alterna entre bloquear e **ativar** conforme status (`ACTIVE`/`INACTIVE`/`BLOCKED`).
+- API de status passou a aceitar reativação (`ACTIVE`) mantendo motivo obrigatório para bloquear/inativar.
+- Tabela de usuários passou a exibir flag com `statusReason` (hover/click), no mesmo padrão visual da observação das comissões.
+- Log: `doc/LOG-2026-04-14__071454__update-usuarios-ativar-bloqueio-flag-motivo.md`.
+
+### Palavras-chave para pesquisa futura
+
+- ativar usuario bloqueado
+- status reason flag usuarios

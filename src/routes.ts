@@ -310,8 +310,8 @@ router.patch("/users/:id/status", requireAuth, async (req: RequestWithAuth, res)
   try {
     const userId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const schema = z.object({
-      status: z.enum(["INACTIVE", "BLOCKED"]),
-      reason: z.string().trim().min(3),
+      status: z.enum(["ACTIVE", "INACTIVE", "BLOCKED"]),
+      reason: z.string().trim().min(3).optional(),
     });
     const parsed = schema.parse(req.body);
     const user = await setUserLifecycleStatus(req.auth!, userId, parsed.status, parsed.reason);

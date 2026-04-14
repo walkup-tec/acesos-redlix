@@ -935,12 +935,12 @@ export async function updateUserProfileByManager(
 export async function setUserLifecycleStatus(
   auth: AuthContext,
   userId: string,
-  status: "INACTIVE" | "BLOCKED",
-  reason: string,
+  status: "ACTIVE" | "INACTIVE" | "BLOCKED",
+  reason?: string,
 ): Promise<TenantUser> {
   assertCanManageUsers(auth);
-  const cleanedReason = reason.trim();
-  if (!cleanedReason) {
+  const cleanedReason = reason?.trim() ?? "";
+  if ((status === "INACTIVE" || status === "BLOCKED") && !cleanedReason) {
     throw new Error("Informe o motivo da ação.");
   }
   const { data: row, error: findError } = await supabase
@@ -958,7 +958,8 @@ export async function setUserLifecycleStatus(
     updated_at: nowIso(),
   };
   if (await hasStatusReasonColumn()) {
-    updatePayload.status_reason = cleanedReason;
+    updatePayload.status_reason =
+      cleanedReason || (status === "ACTIVE" ? "Usuário reativado por gestor." : null);
   }
   const { error: updateError } = await supabase
     .from("users")
@@ -967,7 +968,7 @@ export async function setUserLifecycleStatus(
     .eq("tenant_id", auth.tenantId);
   if (updateError) throw updateError;
   user.status = status;
-  user.statusReason = cleanedReason;
+  user.statusReason = cleanedReason || (status === "ACTIVE" ? "Usuário reativado por gestor." : undefined);
   return user;
 }
 

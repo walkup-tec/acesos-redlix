@@ -434,7 +434,7 @@ function App() {
   const [permCreateSellers, setPermCreateSellers] = useState(false);
   const [permCommissionTables, setPermCommissionTables] = useState(false);
   const [permContents, setPermContents] = useState(false);
-  const [pendingUserAction, setPendingUserAction] = useState<"APPROVE" | "INACTIVE" | "BLOCKED" | "RESET" | "EDIT" | "">(
+  const [pendingUserAction, setPendingUserAction] = useState<"APPROVE" | "ACTIVE" | "INACTIVE" | "BLOCKED" | "RESET" | "EDIT" | "">(
     "",
   );
   const [pendingUserActionTarget, setPendingUserActionTarget] = useState<User | null>(null);
@@ -497,6 +497,8 @@ function App() {
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const [observationHoverTableId, setObservationHoverTableId] = useState<string | null>(null);
   const [observationPinnedTableId, setObservationPinnedTableId] = useState<string | null>(null);
+  const [userReasonHoverUserId, setUserReasonHoverUserId] = useState<string | null>(null);
+  const [userReasonPinnedUserId, setUserReasonPinnedUserId] = useState<string | null>(null);
 
   useEffect(() => {
     void loadBranding();
@@ -505,13 +507,16 @@ function App() {
   useEffect(() => {
     const onDocMouseDown = (e: MouseEvent) => {
       const el = e.target;
-      if (el instanceof Element && el.closest(".table-observation-wrap")) return;
+      if (el instanceof Element && (el.closest(".table-observation-wrap") || el.closest(".user-status-reason-wrap"))) return;
       setObservationPinnedTableId(null);
+      setUserReasonPinnedUserId(null);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setObservationPinnedTableId(null);
         setObservationHoverTableId(null);
+        setUserReasonPinnedUserId(null);
+        setUserReasonHoverUserId(null);
       }
     };
     document.addEventListener("mousedown", onDocMouseDown);
@@ -1021,7 +1026,7 @@ function App() {
     }
   }
 
-  function openUserAction(action: "APPROVE" | "INACTIVE" | "BLOCKED" | "RESET" | "EDIT", user: User): void {
+  function openUserAction(action: "APPROVE" | "ACTIVE" | "INACTIVE" | "BLOCKED" | "RESET" | "EDIT", user: User): void {
     setPendingUserAction(action);
     setPendingUserActionTarget(user);
     setPendingUserActionReason("");
@@ -1091,9 +1096,9 @@ function App() {
 
   async function handleConfirmUserStatusAction(): Promise<void> {
     if (!pendingUserActionTarget || !pendingUserAction) return;
-    if (pendingUserAction !== "INACTIVE" && pendingUserAction !== "BLOCKED") return;
+    if (pendingUserAction !== "ACTIVE" && pendingUserAction !== "INACTIVE" && pendingUserAction !== "BLOCKED") return;
     const reason = pendingUserActionReason.trim();
-    if (!reason) {
+    if ((pendingUserAction === "INACTIVE" || pendingUserAction === "BLOCKED") && !reason) {
       setError("Informe o motivo da ação.");
       return;
     }
@@ -1108,7 +1113,7 @@ function App() {
         },
         body: JSON.stringify({
           status: pendingUserAction,
-          reason,
+          reason: reason || undefined,
         }),
       });
       const body = (await response.json().catch(() => ({}))) as { message?: string };
@@ -2020,10 +2025,42 @@ function App() {
                         <td>{user.email}</td>
                         <td>{user.role}</td>
                         <td>
-                          <span className={`user-status ${userStatusClassName(user)}`}>
-                            <span className="user-status__dot" aria-hidden />
-                            {formatUserLifecycleStatus(user)}
-                          </span>
+                          <div className="user-status-with-reason">
+                            <span className={`user-status ${userStatusClassName(user)}`}>
+                              <span className="user-status__dot" aria-hidden />
+                              {formatUserLifecycleStatus(user)}
+                            </span>
+                            {user.statusReason ? (
+                              <div
+                                className="user-status-reason-wrap"
+                                onMouseEnter={() => setUserReasonHoverUserId(user.id)}
+                                onMouseLeave={() =>
+                                  setUserReasonHoverUserId((cur) =>
+                                    cur === user.id ? null : cur
+                                  )
+                                }
+                              >
+                                <button
+                                  type="button"
+                                  className="table-observation-icon user-status-reason-icon"
+                                  aria-expanded={userReasonPinnedUserId === user.id || userReasonHoverUserId === user.id}
+                                  aria-controls={`user-status-reason-${user.id}`}
+                                  aria-label={`Motivo do status: ${user.statusReason}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setUserReasonPinnedUserId((p) => (p === user.id ? null : user.id));
+                                  }}
+                                >
+                                  <Info size={18} strokeWidth={2.25} aria-hidden />
+                                </button>
+                                {userReasonPinnedUserId === user.id || userReasonHoverUserId === user.id ? (
+                                  <div id={`user-status-reason-${user.id}`} className="table-observation-flag" role="tooltip">
+                                    {user.statusReason}
+                                  </div>
+                                ) : null}
+                              </div>
+                            ) : null}
+                          </div>
                         </td>
                         <td className="user-actions-cell" onClick={(e) => e.stopPropagation()}>
                           {canCreateUsers ? (
@@ -2054,6 +2091,16 @@ function App() {
                                   onClick={() => openUserAction("APPROVE", user)}
                                   title="Aprovar e ativar"
                                   aria-label={`Aprovar e ativar usuário ${displayNameInUserList(user)}`}
+                                >
+                                  <CheckCircle2 size={14} aria-hidden />
+                                </button>
+                              ) : (user.status ?? "").toUpperCase() === "INACTIVE" || (user.status ?? "").toUpperCase() === "BLOCKED" ? (
+                                <button
+                                  type="button"
+                                  className="btn-secondary user-inline-btn user-inline-btn--activate"
+                                  onClick={() => openUserAction("ACTIVE", user)}
+                                  title="Ativar"
+                                  aria-label={`Ativar usuário ${displayNameInUserList(user)}`}
                                 >
                                   <CheckCircle2 size={14} aria-hidden />
                                 </button>
@@ -2214,28 +2261,37 @@ function App() {
             </div>
           ) : null}
 
-          {pendingUserActionTarget && (pendingUserAction === "INACTIVE" || pendingUserAction === "BLOCKED") ? (
+          {pendingUserActionTarget &&
+          (pendingUserAction === "ACTIVE" || pendingUserAction === "INACTIVE" || pendingUserAction === "BLOCKED") ? (
             <div className="modal-backdrop" role="presentation">
               <div className="card modal-dialog" role="dialog" aria-modal onClick={(e) => e.stopPropagation()}>
                 <div className="modal-dialog__head">
                   <h3 className="modal-dialog__title">
-                    {pendingUserAction === "INACTIVE" ? "Inativar usuário" : "Bloquear usuário"}
+                    {pendingUserAction === "ACTIVE"
+                      ? "Ativar usuário"
+                      : pendingUserAction === "INACTIVE"
+                        ? "Inativar usuário"
+                        : "Bloquear usuário"}
                   </h3>
                   <button type="button" className="modal-dialog__close" onClick={closeUserActionModal} aria-label="Fechar">
                     <X size={16} aria-hidden />
                   </button>
                 </div>
                 <p className="muted">{`Usuário: ${displayNameInUserList(pendingUserActionTarget)}`}</p>
-                <label>
-                  Motivo
-                  <input
-                    value={pendingUserActionReason}
-                    onChange={(e) => setPendingUserActionReason(e.target.value)}
-                    placeholder="Descreva o motivo da ação"
-                    required
-                    autoFocus
-                  />
-                </label>
+                {pendingUserAction === "ACTIVE" ? (
+                  <p className="muted">Confirma reativar este usuário para permitir novo login?</p>
+                ) : (
+                  <label>
+                    Motivo
+                    <input
+                      value={pendingUserActionReason}
+                      onChange={(e) => setPendingUserActionReason(e.target.value)}
+                      placeholder="Descreva o motivo da ação"
+                      required
+                      autoFocus
+                    />
+                  </label>
+                )}
                 <div className="modal-dialog__actions">
                   <button type="button" className="btn-ghost" onClick={closeUserActionModal}>
                     Cancelar
