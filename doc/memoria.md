@@ -613,3 +613,13 @@
 
 - modal contraste texto
 - muted modal claro
+
+## 2026-04-14 - Modal: fonte cinza escuro no modo claro
+
+- Ajustadas cores de texto do modal apenas para ody[data-theme="light"] com cinza escuro de maior contraste.
+- Modo escuro mantido sem mudanças.
+
+### Palavras-chave para pesquisa futura
+
+- modal modo claro cinza escuro
+- contraste texto modal light
