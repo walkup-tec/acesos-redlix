@@ -2130,49 +2130,6 @@ body[data-theme="light"] .content-modal__description {
     overflow-x: hidden;
   }
 
-  /*
-   * Usuários (mobile): ordem vertical — título → Atualizar → filtro → pesquisa
-   * (no DOM o select vem antes do botão; usamos flex order só ≤900px)
-   */
-  .users-toolbar__top {
-    flex-direction: column;
-    align-items: stretch;
-    flex-wrap: nowrap;
-    gap: 0.5rem;
-  }
-
-  .users-toolbar__title {
-    width: 100%;
-  }
-
-  .users-toolbar__actions {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.5rem;
-    margin-left: 0;
-    width: 100%;
-  }
-
-  .users-toolbar__actions .btn-secondary.card-toolbar__action-btn {
-    order: 1;
-    align-self: flex-start;
-  }
-
-  .users-toolbar__actions .users-toolbar__filter-select {
-    order: 2;
-    width: auto;
-    max-width: 100%;
-    min-width: min(10.5rem, 100%);
-    flex: none;
-  }
-
-  .users-toolbar__search-input {
-    max-width: none;
-    width: 100%;
-    box-sizing: border-box;
-  }
-
   .shell-nav__top {
     flex-direction: row;
     align-items: center;
@@ -2272,6 +2229,45 @@ body[data-theme="light"] .content-modal__description {
     grid-template-columns: 1fr;
   }
 
+  /* Usuários: título e filtro/atualizar na mesma linha (só ≥901px; no mobile a base é coluna) */
+  .users-toolbar__top {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .users-toolbar__title {
+    flex: 0 1 auto;
+    width: auto;
+  }
+
+  .users-toolbar__actions {
+    display: inline-flex;
+    flex-direction: row;
+    align-items: center;
+    flex: 0 0 auto;
+    margin-left: auto;
+    width: auto;
+    gap: 0.5rem;
+  }
+
+  .users-toolbar__actions .btn-secondary.card-toolbar__action-btn {
+    order: 0;
+    align-self: auto;
+  }
+
+  .users-toolbar__actions .users-toolbar__filter-select {
+    order: 0;
+    width: auto;
+    min-width: 10.5rem;
+    max-width: none;
+  }
+
+  .users-toolbar__search-input {
+    max-width: 28rem;
+  }
 }
 
 
@@ -2316,27 +2312,42 @@ body[data-theme="light"] .content-modal__description {
   margin-bottom: 0.75rem;
 }
 
+/* Mobile-first: coluna — Usuários → Atualizar → filtro → pesquisa (ordem DOM do select corrigida com flex order) */
 .users-toolbar__top {
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
+  align-items: stretch;
   flex-wrap: nowrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
+  gap: 0.5rem;
   width: 100%;
 }
 
 .users-toolbar__title {
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   margin: 0;
+  width: 100%;
 }
 
 .users-toolbar__actions {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 0.5rem;
-  margin-left: auto;
+  margin-left: 0;
+  width: 100%;
+}
+
+.users-toolbar__actions .btn-secondary.card-toolbar__action-btn {
+  order: 1;
+  align-self: flex-start;
+}
+
+.users-toolbar__actions .users-toolbar__filter-select {
+  order: 2;
+  width: auto;
+  max-width: 100%;
+  min-width: min(10.5rem, 100%);
+  flex: none;
 }
 
 .users-toolbar__filter-select {
@@ -2363,7 +2374,8 @@ body[data-theme="light"] .content-modal__description {
 
 .users-toolbar__search-input {
   width: 100%;
-  max-width: 28rem;
+  max-width: 100%;
+  box-sizing: border-box;
   padding: 0.44rem 0.7rem;
   border-radius: 0.7rem;
   font-size: 0.85rem;

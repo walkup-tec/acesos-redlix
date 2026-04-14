@@ -899,3 +899,8 @@
 
 - Mobile: select com largura automática (não 100%); altura 2.5rem igual ao botão; select com appearance none + chevron SVG; pesquisa com min-height alinhada.
 - Log: doc/LOG-2026-04-14__210500__fix-usuarios-toolbar-mobile-alinhamento-altura-select.md.
+
+## 2026-04-14 - Fix cascata CSS: toolbar Usuários mobile-first
+
+- Bug: .users-toolbar__top { row } global vinha depois do @media (max-width: 900px) e anulava o layout em coluna. Base agora é coluna; desktop em @media (min-width: 901px).
+- Log: doc/LOG-2026-04-14__213000__fix-cascade-css-toolbar-usuarios-mobile-first.md.
