@@ -750,3 +750,15 @@
 - atualizar usuarios
 - refresh users
 - card-toolbar
+
+## 2026-04-14 - Ajuste visual do botão Atualizar em usuários
+
+- Botão `Atualizar` ficou menor e com background no padrão dos botões de ação.
+- Hover e modo escuro alinhados ao visual existente no sistema.
+- Log: `doc/LOG-2026-04-14__163857__style-botao-atualizar-usuarios-menor-padrao.md`.
+
+### Palavras-chave
+
+- style botao atualizar
+- users toolbar
+- padrao botoes
