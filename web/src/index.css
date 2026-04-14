@@ -2170,12 +2170,6 @@ body[data-theme="light"] .content-modal__description {
   flex-wrap: wrap;
 }
 
-.users-toolbar__filter-label {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--brand-fg-muted);
-}
-
 .users-toolbar__filter-select {
   width: auto;
   min-width: 10.5rem;
@@ -2186,7 +2180,7 @@ body[data-theme="light"] .content-modal__description {
 
 .users-toolbar__search-row {
   display: flex;
-  justify-content: flex-end;
+  justify-content: flex-start;
 }
 
 .users-toolbar__search-input {

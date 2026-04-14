@@ -2070,9 +2070,6 @@ function App() {
                   <div className="users-toolbar__top">
                     <h3 className="card-toolbar__title">Usuários</h3>
                     <div className="card-toolbar__actions">
-                      <label className="users-toolbar__filter-label" htmlFor="users-status-filter">
-                        Status
-                      </label>
                       <select
                         id="users-status-filter"
                         className="users-toolbar__filter-select"

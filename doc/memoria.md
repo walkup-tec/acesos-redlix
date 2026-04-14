@@ -775,3 +775,16 @@
 - filtro usuarios
 - pesquisa usuarios
 - status users
+
+## 2026-04-14 - Ajuste de alinhamento no toolbar de usuários
+
+- Removido texto `Status` no filtro.
+- Campo de pesquisa realinhado para esquerda abaixo do título `Usuários`.
+- Filtro e botão `Atualizar` mantidos lado a lado à direita.
+- Log: `doc/LOG-2026-04-14__165947__fix-alinhamento-toolbar-usuarios.md`.
+
+### Palavras-chave
+
+- alinhamento usuarios toolbar
+- filtro status sem label
+- pesquisa esquerda
