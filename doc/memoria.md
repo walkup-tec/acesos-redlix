@@ -828,3 +828,15 @@
 ### Palavras-chave
 
 - shell-nav rail footer- tema proximo sair
+
+## 2026-04-14 - Ícone discreto do usuário logado no menu lateral
+
+- Adicionado ícone discreto no rodapé do menu lateral.
+- Ao clicar, abre popover com nome completo, e-mail e CPF do usuário logado.
+- Fechamento por clique fora e tecla `Escape`.
+- Log: `doc/LOG-2026-04-14__182014__feat-icone-usuario-logado-no-menu-lateral.md`.
+
+### Palavras-chave
+
+- icone usuario logado menu lateral
+- popover nome email cpf

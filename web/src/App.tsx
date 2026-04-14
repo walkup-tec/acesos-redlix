@@ -62,6 +62,9 @@ type SessionUser = {
   permCreateSellers: boolean;
   permCommissionTables: boolean;
   permContents: boolean;
+  profile?: {
+    cpf?: string;
+  };
 };
 
 const SESSION_STORAGE_KEY = "credilix_session";
@@ -299,6 +302,13 @@ function fileBaseName(fileName: string): string {
   return dot > 0 ? fileName.slice(0, dot) : fileName;
 }
 
+function formatCpfForDisplay(cpf?: string): string {
+  if (!cpf) return "—";
+  const digits = cpf.replace(/\D/g, "");
+  if (digits.length !== 11) return cpf;
+  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+}
+
 function detectMimeTypeFromBytes(bytes: Uint8Array): string | null {
   if (bytes.length >= 4 && bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46) {
     return "application/pdf";
@@ -505,6 +515,7 @@ function App() {
   const [observationPinnedTableId, setObservationPinnedTableId] = useState<string | null>(null);
   const [userReasonHoverUserId, setUserReasonHoverUserId] = useState<string | null>(null);
   const [userReasonPinnedUserId, setUserReasonPinnedUserId] = useState<string | null>(null);
+  const [isLoggedUserInfoOpen, setIsLoggedUserInfoOpen] = useState(false);
 
   useEffect(() => {
     void loadBranding();
@@ -513,9 +524,17 @@ function App() {
   useEffect(() => {
     const onDocMouseDown = (e: MouseEvent) => {
       const el = e.target;
-      if (el instanceof Element && (el.closest(".table-observation-wrap") || el.closest(".user-status-reason-wrap"))) return;
+      if (
+        el instanceof Element &&
+        (el.closest(".table-observation-wrap") ||
+          el.closest(".user-status-reason-wrap") ||
+          el.closest(".logged-user-info-wrap"))
+      ) {
+        return;
+      }
       setObservationPinnedTableId(null);
       setUserReasonPinnedUserId(null);
+      setIsLoggedUserInfoOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -523,6 +542,7 @@ function App() {
         setObservationHoverTableId(null);
         setUserReasonPinnedUserId(null);
         setUserReasonHoverUserId(null);
+        setIsLoggedUserInfoOpen(false);
       }
     };
     document.addEventListener("mousedown", onDocMouseDown);
@@ -1912,6 +1932,30 @@ function App() {
             ))}
           </div>
           <div className="shell-rail__group shell-rail__group--footer">
+            <div className="logged-user-info-wrap">
+              <button
+                type="button"
+                className="shell-rail-profile-trigger"
+                aria-label="Exibir dados do usuário logado"
+                aria-expanded={isLoggedUserInfoOpen}
+                onClick={() => setIsLoggedUserInfoOpen((cur) => !cur)}
+              >
+                <Users size={16} aria-hidden />
+              </button>
+              {isLoggedUserInfoOpen ? (
+                <div className="logged-user-info-popover" role="dialog" aria-label="Dados do usuário logado">
+                  <p>
+                    <strong>Nome:</strong> {session?.fullName || "—"}
+                  </p>
+                  <p>
+                    <strong>E-mail:</strong> {session?.email || "—"}
+                  </p>
+                  <p>
+                    <strong>CPF:</strong> {formatCpfForDisplay(session?.profile?.cpf)}
+                  </p>
+                </div>
+              ) : null}
+            </div>
             <button
               type="button"
               className="shell-rail-item shell-rail-item--utility"

@@ -573,6 +573,57 @@ button:active {
   gap: 0.4rem;
 }
 
+.logged-user-info-wrap {
+  position: relative;
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.15rem;
+}
+
+.shell-rail-profile-trigger {
+  width: 1.9rem;
+  height: 1.9rem;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid var(--shell-rail-btn-border);
+  background: rgba(255, 255, 255, 0.3);
+  color: var(--shell-rail-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: none;
+}
+
+.shell-rail-profile-trigger:hover {
+  background: rgba(255, 255, 255, 0.5);
+  color: var(--brand-fg);
+}
+
+.logged-user-info-popover {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  min-width: 15.5rem;
+  max-width: 18rem;
+  padding: 0.6rem 0.7rem;
+  border-radius: 10px;
+  border: 1px solid var(--shell-rail-group-border);
+  background: var(--card-bg);
+  box-shadow: var(--shadow-card);
+  z-index: 30;
+}
+
+.logged-user-info-popover p {
+  margin: 0;
+  font-size: 0.79rem;
+  line-height: 1.35;
+  color: var(--brand-fg);
+}
+
+.logged-user-info-popover p + p {
+  margin-top: 0.34rem;
+}
+
 .shell-rail-item {
   display: flex;
   flex-direction: row;
