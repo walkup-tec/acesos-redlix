@@ -1035,6 +1035,21 @@ export async function forgotPassword(email: string): Promise<void> {
   await trySendMail({ to: user.email, subject, text });
 }
 
+export async function validateResetCode(email: string, resetCode: string): Promise<void> {
+  const { data: row, error: findError } = await supabase
+    .from("users")
+    .select("*")
+    .eq("email", email.toLowerCase())
+    .maybeSingle<Record<string, unknown>>();
+  if (findError) {
+    throw findError;
+  }
+  const user = row ? mapUser(row) : undefined;
+  if (!user || user.resetCode !== resetCode) {
+    throw new Error("Código de redefinição inválido.");
+  }
+}
+
 export async function resetPassword(email: string, resetCode: string, newPassword: string): Promise<void> {
   const { data: row, error: findError } = await supabase
     .from("users")

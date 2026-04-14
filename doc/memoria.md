@@ -676,3 +676,15 @@
 
 - etapa exclusiva recuperar senha
 - ativar flow esconder primeiro acesso
+
+## 2026-04-14 - Recuperação de senha com etapas estritas
+
+- Fluxo `/ativar` ajustado para 3 etapas obrigatórias: solicitar código por e-mail, validar código, gravar nova senha com confirmação.
+- Novo endpoint de validação: `POST /api/auth/validate-reset-code`.
+- Após gravar senha com sucesso, redireciona automaticamente para login (`/`).
+- Log: `doc/LOG-2026-04-14__085428__refactor-recuperacao-senha-etapas-estritas.md`.
+
+### Palavras-chave para pesquisa futura
+
+- recuperar senha etapas estritas
+- validate-reset-code

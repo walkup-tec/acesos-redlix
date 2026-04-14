@@ -563,19 +563,14 @@ export function ConviteFlow({ token }: { token: string }) {
 
 export function AtivarFlow() {
   const [branding, setBranding] = useState<Branding | null>(null);
-  const [isRecoveringPassword, setIsRecoveringPassword] = useState(false);
-  const [vEmail, setVEmail] = useState("");
-  const [vCode, setVCode] = useState("");
-  const [vMsg, setVMsg] = useState("");
-  const [vLoading, setVLoading] = useState(false);
-
-  const [forgotStep, setForgotStep] = useState<1 | 2 | 3>(1);
-  const [forgotEmail, setForgotEmail] = useState("");
-  const [forgotCode, setForgotCode] = useState("");
-  const [forgotPassword, setForgotPassword] = useState("");
-  const [forgotMsg, setForgotMsg] = useState("");
-  const [forgotError, setForgotError] = useState("");
-  const [forgotLoading, setForgotLoading] = useState(false);
+  const [recoveryStep, setRecoveryStep] = useState<1 | 2 | 3>(1);
+  const [recoveryEmail, setRecoveryEmail] = useState("");
+  const [recoveryCode, setRecoveryCode] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [recoveryMsg, setRecoveryMsg] = useState("");
+  const [recoveryError, setRecoveryError] = useState("");
+  const [recoveryLoading, setRecoveryLoading] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -586,93 +581,96 @@ export function AtivarFlow() {
     })();
   }, []);
 
-  async function handleVerify(e: FormEvent<HTMLFormElement>): Promise<void> {
+  async function handleRequestResetCode(e: FormEvent<HTMLFormElement>): Promise<void> {
     e.preventDefault();
-    setVMsg("");
-    setVLoading(true);
+    setRecoveryMsg("");
+    setRecoveryError("");
+    setRecoveryLoading(true);
     try {
-      const r = await fetch(apiUrl("/auth/verify-first-access"), {
+      const r = await fetch(apiUrl("/auth/forgot-password"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: vEmail.trim(), code: vCode.trim() }),
+        body: JSON.stringify({ email: recoveryEmail.trim() }),
+      });
+      const body = (await r.json()) as { message?: string };
+      if (!r.ok) {
+        throw new Error(body.message ?? "Falha ao solicitar código.");
+      }
+      setRecoveryMsg(body.message ?? "Código enviado para o e-mail informado.");
+      setRecoveryStep(2);
+    } catch (err) {
+      setRecoveryError(err instanceof Error ? err.message : "Erro ao solicitar código.");
+    } finally {
+      setRecoveryLoading(false);
+    }
+  }
+
+  async function handleValidateCode(e: FormEvent<HTMLFormElement>): Promise<void> {
+    e.preventDefault();
+    setRecoveryMsg("");
+    setRecoveryError("");
+    if (recoveryCode.trim().length !== 6) {
+      setRecoveryError("Informe o código de 6 dígitos.");
+      return;
+    }
+    setRecoveryLoading(true);
+    try {
+      const r = await fetch(apiUrl("/auth/validate-reset-code"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: recoveryEmail.trim(),
+          resetCode: recoveryCode.trim(),
+        }),
       });
       const body = (await r.json()) as { message?: string };
       if (!r.ok) {
         throw new Error(body.message ?? "Código inválido.");
       }
-      setVMsg("Primeiro acesso validado. Você já pode entrar com seu e-mail e senha.");
+      setRecoveryMsg("Código validado com sucesso.");
+      setRecoveryStep(3);
     } catch (err) {
-      setVMsg(err instanceof Error ? err.message : "Erro ao validar.");
+      setRecoveryError(err instanceof Error ? err.message : "Erro ao validar código.");
     } finally {
-      setVLoading(false);
+      setRecoveryLoading(false);
     }
   }
 
-  async function handleForgotRequestEmail(e: FormEvent<HTMLFormElement>): Promise<void> {
+  async function handleSaveNewPassword(e: FormEvent<HTMLFormElement>): Promise<void> {
     e.preventDefault();
-    setForgotMsg("");
-    setForgotError("");
-    setForgotLoading(true);
-    try {
-      const r = await fetch(apiUrl("/auth/forgot-password"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: forgotEmail.trim() }),
-      });
-      const body = (await r.json()) as { message?: string };
-      if (!r.ok) {
-        throw new Error(body.message ?? "Falha na solicitação.");
-      }
-      setForgotMsg(body.message ?? "Se o e-mail estiver cadastrado, você receberá um código.");
-      setForgotStep(2);
-    } catch (err) {
-      setForgotError(err instanceof Error ? err.message : "Erro.");
-    } finally {
-      setForgotLoading(false);
-    }
-  }
-
-  function handleForgotConfirmCode(e: FormEvent<HTMLFormElement>): void {
-    e.preventDefault();
-    setForgotError("");
-    if (forgotCode.trim().length !== 6) {
-      setForgotError("Informe o código de 6 dígitos recebido por e-mail.");
+    setRecoveryMsg("");
+    setRecoveryError("");
+    if (newPassword.length < 6) {
+      setRecoveryError("A nova senha deve ter pelo menos 6 caracteres.");
       return;
     }
-    setForgotStep(3);
-  }
-
-  async function handleForgotDefinePassword(e: FormEvent<HTMLFormElement>): Promise<void> {
-    e.preventDefault();
-    setForgotMsg("");
-    setForgotError("");
-    if (forgotPassword.length < 6) {
-      setForgotError("A nova senha deve ter pelo menos 6 caracteres.");
+    if (newPassword !== confirmPassword) {
+      setRecoveryError("A confirmação de senha não confere.");
       return;
     }
-    setForgotLoading(true);
+    setRecoveryLoading(true);
     try {
       const r = await fetch(apiUrl("/auth/reset-password"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email: forgotEmail.trim(),
-          resetCode: forgotCode.trim(),
-          newPassword: forgotPassword,
+          email: recoveryEmail.trim(),
+          resetCode: recoveryCode.trim(),
+          newPassword,
         }),
       });
       const body = (await r.json()) as { message?: string };
       if (!r.ok) {
         throw new Error(body.message ?? "Não foi possível alterar a senha.");
       }
-      setForgotMsg("Senha alterada com sucesso. Redirecionando para o login…");
+      setRecoveryMsg("Senha gravada com sucesso. Redirecionando para o login…");
       window.setTimeout(() => {
         window.location.assign("/");
       }, 900);
     } catch (err) {
-      setForgotError(err instanceof Error ? err.message : "Erro ao redefinir senha.");
+      setRecoveryError(err instanceof Error ? err.message : "Erro ao gravar senha.");
     } finally {
-      setForgotLoading(false);
+      setRecoveryLoading(false);
     }
   }
 
@@ -682,110 +680,72 @@ export function AtivarFlow() {
         {branding?.logoUrl ? (
           <img className="logo logo--auth" src={branding.logoUrl} alt="" width={220} height={64} />
         ) : null}
-        <h1 className="onboarding-title">Ativação e senha</h1>
-
-        {!isRecoveringPassword ? (
-          <div className="onboarding-block">
-            <h2 className="onboarding-subtitle">Validar primeiro acesso</h2>
-            <p className="muted small">Use o código de 6 dígitos enviado por e-mail após a aprovação da conta.</p>
-            <form className="form-grid form-grid--left" onSubmit={handleVerify}>
+        <h1 className="onboarding-title">Recuperação de senha</h1>
+        <div className="onboarding-block">
+          {recoveryStep === 1 ? (
+            <form className="form-grid form-grid--left" onSubmit={handleRequestResetCode}>
               <label>
                 E-mail
-                <input type="email" value={vEmail} onChange={(e) => setVEmail(e.target.value)} required />
+                <input type="email" value={recoveryEmail} onChange={(e) => setRecoveryEmail(e.target.value)} required />
               </label>
-              <label>
-                Código
-                <input value={vCode} onChange={(e) => setVCode(e.target.value)} required minLength={6} maxLength={6} />
-              </label>
-              <button type="submit" disabled={vLoading}>
-                {vLoading ? "Validando…" : "Validar"}
+              <button type="submit" disabled={recoveryLoading}>
+                {recoveryLoading ? "Solicitando…" : "Solicitar código"}
               </button>
             </form>
-            {vMsg ? <p className={vMsg.startsWith("Primeiro") ? "muted success-note" : "error"}>{vMsg}</p> : null}
-            <div style={{ marginTop: "0.75rem" }}>
-              <button type="button" className="btn-secondary" onClick={() => setIsRecoveringPassword(true)}>
-                Esqueci a senha
+          ) : null}
+
+          {recoveryStep === 2 ? (
+            <form className="form-grid form-grid--left" onSubmit={handleValidateCode}>
+              <label>
+                Informe o código
+                <input
+                  value={recoveryCode}
+                  onChange={(e) => setRecoveryCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  required
+                  minLength={6}
+                  maxLength={6}
+                  inputMode="numeric"
+                />
+              </label>
+              <button type="submit" disabled={recoveryLoading}>
+                {recoveryLoading ? "Validando…" : "Validar"}
               </button>
-            </div>
-          </div>
-        ) : (
-          <div className="onboarding-block">
-            <h2 className="onboarding-subtitle">Recuperação de senha</h2>
-            <p className="muted small">
-              {forgotStep === 1
-                ? "Etapa 1 de 3 — informe o e-mail cadastrado."
-                : forgotStep === 2
-                  ? "Etapa 2 de 3 — informe o código recebido."
-                  : "Etapa 3 de 3 — crie a nova senha."}
-            </p>
+            </form>
+          ) : null}
 
-            {forgotStep === 1 ? (
-              <form className="form-grid form-grid--left" onSubmit={handleForgotRequestEmail}>
-                <label>
-                  E-mail
-                  <input type="email" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)} required />
-                </label>
-                <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
-                  <button type="button" className="btn-secondary" onClick={() => setIsRecoveringPassword(false)}>
-                    Voltar
-                  </button>
-                  <button type="submit" disabled={forgotLoading}>
-                    {forgotLoading ? "Enviando…" : "Enviar código"}
-                  </button>
-                </div>
-              </form>
-            ) : null}
+          {recoveryStep === 3 ? (
+            <form className="form-grid form-grid--left" onSubmit={handleSaveNewPassword}>
+              <label>
+                Informe a nova senha
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  required
+                  minLength={6}
+                  autoComplete="new-password"
+                />
+              </label>
+              <label>
+                Confirmar nova senha
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  required
+                  minLength={6}
+                  autoComplete="new-password"
+                />
+              </label>
+              <button type="submit" disabled={recoveryLoading}>
+                {recoveryLoading ? "Gravando…" : "Gravar senha"}
+              </button>
+            </form>
+          ) : null}
 
-            {forgotStep === 2 ? (
-              <form className="form-grid form-grid--left" onSubmit={handleForgotConfirmCode}>
-                <label>
-                  Código recebido
-                  <input
-                    value={forgotCode}
-                    onChange={(e) => setForgotCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                    required
-                    minLength={6}
-                    maxLength={6}
-                    inputMode="numeric"
-                  />
-                </label>
-                <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
-                  <button type="button" className="btn-secondary" onClick={() => setForgotStep(1)}>
-                    Voltar
-                  </button>
-                  <button type="submit">Continuar</button>
-                </div>
-              </form>
-            ) : null}
-
-            {forgotStep === 3 ? (
-              <form className="form-grid form-grid--left" onSubmit={handleForgotDefinePassword}>
-                <label>
-                  Nova senha
-                  <input
-                    type="password"
-                    value={forgotPassword}
-                    onChange={(e) => setForgotPassword(e.target.value)}
-                    required
-                    minLength={6}
-                    autoComplete="new-password"
-                  />
-                </label>
-                <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
-                  <button type="button" className="btn-secondary" onClick={() => setForgotStep(2)}>
-                    Voltar
-                  </button>
-                  <button type="submit" disabled={forgotLoading}>
-                    {forgotLoading ? "Salvando…" : "Definir nova senha"}
-                  </button>
-                </div>
-              </form>
-            ) : null}
-
-            {forgotMsg ? <p className="muted success-note">{forgotMsg}</p> : null}
-            {forgotError ? <p className="error">{forgotError}</p> : null}
-          </div>
-        )}
+          {recoveryMsg ? <p className="muted success-note">{recoveryMsg}</p> : null}
+          {recoveryError ? <p className="error">{recoveryError}</p> : null}
+        </div>
 
         <a className="link-home" href="/">
           Voltar ao login

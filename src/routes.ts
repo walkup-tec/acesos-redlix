@@ -28,6 +28,7 @@ import {
   listUsers,
   login,
   resetPassword,
+  validateResetCode,
   verifyFirstAccess,
   inviteUser,
   resetUserAccessByManager,
@@ -171,6 +172,20 @@ router.post("/auth/reset-password", async (req, res) => {
     res.json({ message: "Senha alterada com sucesso." });
   } catch (error) {
     res.status(400).json({ message: error instanceof Error ? error.message : "Erro ao resetar senha." });
+  }
+});
+
+router.post("/auth/validate-reset-code", async (req, res) => {
+  try {
+    const schema = z.object({
+      email: z.string().email(),
+      resetCode: z.string().length(6),
+    });
+    const parsed = schema.parse(req.body);
+    await validateResetCode(parsed.email, parsed.resetCode);
+    res.json({ message: "Código válido." });
+  } catch (error) {
+    res.status(400).json({ message: error instanceof Error ? error.message : "Erro ao validar código." });
   }
 });
 
