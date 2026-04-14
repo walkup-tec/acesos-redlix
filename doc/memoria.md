@@ -634,3 +634,14 @@
 - content-modal description light contrast
 - excluir tabela modal legibilidade
 
+
+## 2026-04-14 - Limpeza de dados para reteste
+
+- Limpos registros de commission_tables do tenant Credilix.
+- Limpos usuários do tenant, preservando apenas master@credilix.local.
+- Log: $log.
+
+### Palavras-chave para pesquisa futura
+
+- limpar users tenant
+- zerar commission tables
