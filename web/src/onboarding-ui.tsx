@@ -568,15 +568,13 @@ export function AtivarFlow() {
   const [vMsg, setVMsg] = useState("");
   const [vLoading, setVLoading] = useState(false);
 
-  const [rEmail, setREmail] = useState("");
-  const [rCode, setRCode] = useState("");
-  const [rPass, setRPass] = useState("");
-  const [rMsg, setRMsg] = useState("");
-  const [rLoading, setRLoading] = useState(false);
-
-  const [fEmail, setFEmail] = useState("");
-  const [fMsg, setFMsg] = useState("");
-  const [fLoading, setFLoading] = useState(false);
+  const [forgotStep, setForgotStep] = useState<1 | 2 | 3>(1);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotCode, setForgotCode] = useState("");
+  const [forgotPassword, setForgotPassword] = useState("");
+  const [forgotMsg, setForgotMsg] = useState("");
+  const [forgotError, setForgotError] = useState("");
+  const [forgotLoading, setForgotLoading] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -609,53 +607,71 @@ export function AtivarFlow() {
     }
   }
 
-  async function handleReset(e: FormEvent<HTMLFormElement>): Promise<void> {
+  async function handleForgotRequestEmail(e: FormEvent<HTMLFormElement>): Promise<void> {
     e.preventDefault();
-    setRMsg("");
-    setRLoading(true);
+    setForgotMsg("");
+    setForgotError("");
+    setForgotLoading(true);
+    try {
+      const r = await fetch(apiUrl("/auth/forgot-password"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: forgotEmail.trim() }),
+      });
+      const body = (await r.json()) as { message?: string };
+      if (!r.ok) {
+        throw new Error(body.message ?? "Falha na solicitação.");
+      }
+      setForgotMsg(body.message ?? "Se o e-mail estiver cadastrado, você receberá um código.");
+      setForgotStep(2);
+    } catch (err) {
+      setForgotError(err instanceof Error ? err.message : "Erro.");
+    } finally {
+      setForgotLoading(false);
+    }
+  }
+
+  function handleForgotConfirmCode(e: FormEvent<HTMLFormElement>): void {
+    e.preventDefault();
+    setForgotError("");
+    if (forgotCode.trim().length !== 6) {
+      setForgotError("Informe o código de 6 dígitos recebido por e-mail.");
+      return;
+    }
+    setForgotStep(3);
+  }
+
+  async function handleForgotDefinePassword(e: FormEvent<HTMLFormElement>): Promise<void> {
+    e.preventDefault();
+    setForgotMsg("");
+    setForgotError("");
+    if (forgotPassword.length < 6) {
+      setForgotError("A nova senha deve ter pelo menos 6 caracteres.");
+      return;
+    }
+    setForgotLoading(true);
     try {
       const r = await fetch(apiUrl("/auth/reset-password"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email: rEmail.trim(),
-          resetCode: rCode.trim(),
-          newPassword: rPass,
+          email: forgotEmail.trim(),
+          resetCode: forgotCode.trim(),
+          newPassword: forgotPassword,
         }),
       });
       const body = (await r.json()) as { message?: string };
       if (!r.ok) {
         throw new Error(body.message ?? "Não foi possível alterar a senha.");
       }
-      setRMsg("Senha alterada. Faça login com a nova senha.");
-      setRPass("");
-      setRCode("");
+      setForgotMsg("Senha alterada com sucesso. Redirecionando para o login…");
+      window.setTimeout(() => {
+        window.location.assign("/");
+      }, 900);
     } catch (err) {
-      setRMsg(err instanceof Error ? err.message : "Erro.");
+      setForgotError(err instanceof Error ? err.message : "Erro ao redefinir senha.");
     } finally {
-      setRLoading(false);
-    }
-  }
-
-  async function handleForgot(e: FormEvent<HTMLFormElement>): Promise<void> {
-    e.preventDefault();
-    setFMsg("");
-    setFLoading(true);
-    try {
-      const r = await fetch(apiUrl("/auth/forgot-password"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: fEmail.trim() }),
-      });
-      const body = (await r.json()) as { message?: string };
-      if (!r.ok) {
-        throw new Error(body.message ?? "Falha na solicitação.");
-      }
-      setFMsg(body.message ?? "Se o e-mail estiver cadastrado, você receberá um código.");
-    } catch (err) {
-      setFMsg(err instanceof Error ? err.message : "Erro.");
-    } finally {
-      setFLoading(false);
+      setForgotLoading(false);
     }
   }
 
@@ -688,46 +704,74 @@ export function AtivarFlow() {
 
         <div className="onboarding-block">
           <h2 className="onboarding-subtitle">Esqueci a senha</h2>
-          <p className="muted small">Enviaremos um código de 6 dígitos para o e-mail cadastrado.</p>
-          <form className="form-grid form-grid--left" onSubmit={handleForgot}>
-            <label>
-              E-mail
-              <input type="email" value={fEmail} onChange={(e) => setFEmail(e.target.value)} required />
-            </label>
-            <button type="submit" disabled={fLoading}>
-              {fLoading ? "Enviando…" : "Enviar código"}
-            </button>
-          </form>
-          {fMsg ? <p className="muted success-note">{fMsg}</p> : null}
-        </div>
+          <p className="muted small">
+            {forgotStep === 1
+              ? "Etapa 1 de 3 — informe o e-mail cadastrado."
+              : forgotStep === 2
+                ? "Etapa 2 de 3 — informe o código recebido."
+                : "Etapa 3 de 3 — crie a nova senha."}
+          </p>
 
-        <div className="onboarding-block">
-          <h2 className="onboarding-subtitle">Nova senha (código por e-mail)</h2>
-          <form className="form-grid form-grid--left" onSubmit={handleReset}>
-            <label>
-              E-mail
-              <input type="email" value={rEmail} onChange={(e) => setREmail(e.target.value)} required />
-            </label>
-            <label>
-              Código recebido
-              <input value={rCode} onChange={(e) => setRCode(e.target.value)} required minLength={6} maxLength={6} />
-            </label>
-            <label>
-              Nova senha
-              <input
-                type="password"
-                value={rPass}
-                onChange={(e) => setRPass(e.target.value)}
-                required
-                minLength={6}
-                autoComplete="new-password"
-              />
-            </label>
-            <button type="submit" disabled={rLoading}>
-              {rLoading ? "Salvando…" : "Definir nova senha"}
-            </button>
-          </form>
-          {rMsg ? <p className={rMsg.startsWith("Senha") ? "muted success-note" : "error"}>{rMsg}</p> : null}
+          {forgotStep === 1 ? (
+            <form className="form-grid form-grid--left" onSubmit={handleForgotRequestEmail}>
+              <label>
+                E-mail
+                <input type="email" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)} required />
+              </label>
+              <button type="submit" disabled={forgotLoading}>
+                {forgotLoading ? "Enviando…" : "Enviar código"}
+              </button>
+            </form>
+          ) : null}
+
+          {forgotStep === 2 ? (
+            <form className="form-grid form-grid--left" onSubmit={handleForgotConfirmCode}>
+              <label>
+                Código recebido
+                <input
+                  value={forgotCode}
+                  onChange={(e) => setForgotCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  required
+                  minLength={6}
+                  maxLength={6}
+                  inputMode="numeric"
+                />
+              </label>
+              <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+                <button type="button" className="btn-secondary" onClick={() => setForgotStep(1)}>
+                  Voltar
+                </button>
+                <button type="submit">Continuar</button>
+              </div>
+            </form>
+          ) : null}
+
+          {forgotStep === 3 ? (
+            <form className="form-grid form-grid--left" onSubmit={handleForgotDefinePassword}>
+              <label>
+                Nova senha
+                <input
+                  type="password"
+                  value={forgotPassword}
+                  onChange={(e) => setForgotPassword(e.target.value)}
+                  required
+                  minLength={6}
+                  autoComplete="new-password"
+                />
+              </label>
+              <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+                <button type="button" className="btn-secondary" onClick={() => setForgotStep(2)}>
+                  Voltar
+                </button>
+                <button type="submit" disabled={forgotLoading}>
+                  {forgotLoading ? "Salvando…" : "Definir nova senha"}
+                </button>
+              </div>
+            </form>
+          ) : null}
+
+          {forgotMsg ? <p className="muted success-note">{forgotMsg}</p> : null}
+          {forgotError ? <p className="error">{forgotError}</p> : null}
         </div>
 
         <a className="link-home" href="/">

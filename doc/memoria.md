@@ -655,3 +655,14 @@
 
 - aprovacao usuario email ativado
 - credilix acesso ativado
+
+## 2026-04-14 - Recuperação de senha em fluxo sequencial
+
+- Refatorado /ativar para recuperação de senha em 3 etapas: e-mail ? código ? nova senha.
+- Ao concluir, redireciona automaticamente para tela de login.
+- Log: $log.
+
+### Palavras-chave para pesquisa futura
+
+- forgot password wizard 3 etapas
+- redirecionar para login apos reset
