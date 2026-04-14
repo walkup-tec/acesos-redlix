@@ -645,3 +645,13 @@
 
 - limpar users tenant
 - zerar commission tables
+
+## 2026-04-14 - E-mail de ativação com dados de acesso
+
+- Ajustado e-mail enviado na aprovação do usuário para mensagem de ativação com URL de acesso, e-mail e referência à senha cadastrada.
+- Log: $log.
+
+### Palavras-chave para pesquisa futura
+
+- aprovacao usuario email ativado
+- credilix acesso ativado

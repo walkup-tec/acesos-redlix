@@ -746,10 +746,9 @@ export async function approveUser(auth: AuthContext, userId: string): Promise<{ 
     throw error;
   }
 
-  const base = config.appBaseUrl.replace(/\/$/, "");
-  const ativarUrl = `${base}/ativar`;
-  const subject = `Conta aprovada — ${config.branding.name}`;
-  const text = `Olá ${user.fullName},\n\nSua conta no painel ${config.branding.name} foi aprovada.\n\nPara validar o primeiro acesso, abra a página abaixo e informe seu e-mail e o código:\n${ativarUrl}\n\nCódigo de 6 dígitos: ${user.verificationCode}\n\nDepois, faça login com seu e-mail e a senha definida no cadastro.\n`;
+  const accessUrl = config.appBaseUrl.replace(/\/$/, "") + "/";
+  const subject = "Acesso ativado — Credilix";
+  const text = `Olá ${user.fullName}!\nParabéns! Seu acesso ao conteúdo exclusivo da Credilix foi ativado.\nSegue os dados de acesso:\n\nAcesse: ${accessUrl}\nUsuário: ${user.email}\nSenha: a senha cadastrada por você\n\nPara dúvidas ou suporte, solicite ao seu gerente.\nAtenciosamente,\nEquipe Credilix`;
   await trySendMail({ to: user.email, subject, text });
 
   return { user, verificationCode: user.verificationCode };
