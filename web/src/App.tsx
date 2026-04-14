@@ -422,6 +422,7 @@ function App() {
   const [banksApiUnavailable, setBanksApiUnavailable] = useState(() => readBanksApiUnavailable());
   const [tables, setTables] = useState<CommissionTable[]>([]);
   const [contents, setContents] = useState<Content[]>([]);
+  const [usersRefreshLoading, setUsersRefreshLoading] = useState(false);
 
   const [loginEmail, setLoginEmail] = useState("master@credilix.local");
   const [loginPassword, setLoginPassword] = useState("Master@123");
@@ -667,6 +668,28 @@ function App() {
       setError(failures.join(" · "));
     }
   }, [token, banksApiUnavailable]);
+
+  const handleRefreshUsers = useCallback(async () => {
+    if (!token) return;
+    setUsersRefreshLoading(true);
+    setError("");
+    try {
+      const response = await fetch(apiUrl("/users"), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const body = (await response.json().catch(() => ({}))) as { message?: string } | User[];
+      if (!response.ok) {
+        const msg = typeof body === "object" && body && "message" in body ? body.message : undefined;
+        throw new Error(msg ?? "Não foi possível atualizar usuários.");
+      }
+      setUsers(Array.isArray(body) ? body : []);
+      setPanelNotice("Lista de usuários atualizada.");
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Erro ao atualizar usuários.");
+    } finally {
+      setUsersRefreshLoading(false);
+    }
+  }, [token]);
 
   useEffect(() => {
     if (!token) {
@@ -2014,6 +2037,17 @@ function App() {
               <article className="card table-wrap">
                 <div className="card-toolbar">
                   <h3 className="card-toolbar__title">Usuários</h3>
+                  <div className="card-toolbar__actions">
+                    <button
+                      type="button"
+                      className="btn-secondary card-toolbar__action-btn"
+                      onClick={() => void handleRefreshUsers()}
+                      disabled={usersRefreshLoading}
+                    >
+                      <RefreshCw size={16} aria-hidden />
+                      {usersRefreshLoading ? "Atualizando..." : "Atualizar"}
+                    </button>
+                  </div>
                 </div>
                 <table>
                   <thead>

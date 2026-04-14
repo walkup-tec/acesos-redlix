@@ -737,3 +737,16 @@
 - cleanup banco
 - zerar listas
 - products commission_tables contents
+
+## 2026-04-14 - Botão Atualizar na lista de usuários
+
+- Adicionado botão `Atualizar` no módulo de usuários sem recarregar a página.
+- Atualização chama `GET /api/users` e recarrega apenas a tabela de usuários.
+- Inclui loading e aviso de sucesso no painel.
+- Log: `doc/LOG-2026-04-14__162958__feat-botao-atualizar-usuarios.md`.
+
+### Palavras-chave
+
+- atualizar usuarios
+- refresh users
+- card-toolbar

@@ -2151,6 +2151,18 @@ body[data-theme="light"] .content-modal__description {
   font-size: 1rem;
 }
 
+.card-toolbar__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.card-toolbar__action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
 .cell-muted {
   color: var(--brand-fg-muted);
   font-size: 0.88rem;
