@@ -1911,7 +1911,7 @@ function App() {
               </button>
             ))}
           </div>
-          <div className="shell-rail__group shell-rail__actions">
+          <div className="shell-rail__group shell-rail__group--footer">
             <button
               type="button"
               className="shell-rail-item shell-rail-item--utility"
@@ -1923,14 +1923,6 @@ function App() {
               </span>
               <span className="shell-rail-item__label">{theme === "dark" ? "Claro" : "Escuro"}</span>
             </button>
-            <button type="button" className="shell-rail-item shell-rail-item--utility" onClick={() => void refreshAll()}>
-              <span className="shell-rail-item__icon">
-                <RefreshCw {...RAIL_ICON_PROPS} aria-hidden />
-              </span>
-              <span className="shell-rail-item__label">Atualizar</span>
-            </button>
-          </div>
-          <div className="shell-rail__group shell-rail__group--footer">
             <button
               type="button"
               className="shell-rail-item shell-rail-item--logout"

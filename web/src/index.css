@@ -569,6 +569,8 @@ button:active {
 
 .shell-rail__group--footer {
   margin-top: auto;
+  flex-shrink: 0;
+  gap: 0.4rem;
 }
 
 .shell-rail-item {

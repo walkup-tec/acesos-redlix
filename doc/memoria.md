@@ -818,3 +818,13 @@
 ### Palavras-chave
 
 - busca cpf normalizada
+
+## 2026-04-14 - Menu lateral: tema no rodapé, sem Atualizar global
+
+- Removido botão `Atualizar` do menu lateral; mantido apenas nas telas que precisam (ex.: usuários).
+- Tema claro/escuro movido para o grupo do rodapé, acima de `Sair`.
+- Log: `doc/LOG-2026-04-14__181200__refactor-menu-lateral-sem-atualizar-tema-no-rodape.md`.
+
+### Palavras-chave
+
+- shell-nav rail footer- tema proximo sair
