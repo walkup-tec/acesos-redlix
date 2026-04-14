@@ -563,6 +563,7 @@ export function ConviteFlow({ token }: { token: string }) {
 
 export function AtivarFlow() {
   const [branding, setBranding] = useState<Branding | null>(null);
+  const [isRecoveringPassword, setIsRecoveringPassword] = useState(false);
   const [vEmail, setVEmail] = useState("");
   const [vCode, setVCode] = useState("");
   const [vMsg, setVMsg] = useState("");
@@ -683,96 +684,108 @@ export function AtivarFlow() {
         ) : null}
         <h1 className="onboarding-title">Ativação e senha</h1>
 
-        <div className="onboarding-block">
-          <h2 className="onboarding-subtitle">Validar primeiro acesso</h2>
-          <p className="muted small">Use o código de 6 dígitos enviado por e-mail após a aprovação da conta.</p>
-          <form className="form-grid form-grid--left" onSubmit={handleVerify}>
-            <label>
-              E-mail
-              <input type="email" value={vEmail} onChange={(e) => setVEmail(e.target.value)} required />
-            </label>
-            <label>
-              Código
-              <input value={vCode} onChange={(e) => setVCode(e.target.value)} required minLength={6} maxLength={6} />
-            </label>
-            <button type="submit" disabled={vLoading}>
-              {vLoading ? "Validando…" : "Validar"}
-            </button>
-          </form>
-          {vMsg ? <p className={vMsg.startsWith("Primeiro") ? "muted success-note" : "error"}>{vMsg}</p> : null}
-        </div>
-
-        <div className="onboarding-block">
-          <h2 className="onboarding-subtitle">Esqueci a senha</h2>
-          <p className="muted small">
-            {forgotStep === 1
-              ? "Etapa 1 de 3 — informe o e-mail cadastrado."
-              : forgotStep === 2
-                ? "Etapa 2 de 3 — informe o código recebido."
-                : "Etapa 3 de 3 — crie a nova senha."}
-          </p>
-
-          {forgotStep === 1 ? (
-            <form className="form-grid form-grid--left" onSubmit={handleForgotRequestEmail}>
+        {!isRecoveringPassword ? (
+          <div className="onboarding-block">
+            <h2 className="onboarding-subtitle">Validar primeiro acesso</h2>
+            <p className="muted small">Use o código de 6 dígitos enviado por e-mail após a aprovação da conta.</p>
+            <form className="form-grid form-grid--left" onSubmit={handleVerify}>
               <label>
                 E-mail
-                <input type="email" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)} required />
+                <input type="email" value={vEmail} onChange={(e) => setVEmail(e.target.value)} required />
               </label>
-              <button type="submit" disabled={forgotLoading}>
-                {forgotLoading ? "Enviando…" : "Enviar código"}
+              <label>
+                Código
+                <input value={vCode} onChange={(e) => setVCode(e.target.value)} required minLength={6} maxLength={6} />
+              </label>
+              <button type="submit" disabled={vLoading}>
+                {vLoading ? "Validando…" : "Validar"}
               </button>
             </form>
-          ) : null}
+            {vMsg ? <p className={vMsg.startsWith("Primeiro") ? "muted success-note" : "error"}>{vMsg}</p> : null}
+            <div style={{ marginTop: "0.75rem" }}>
+              <button type="button" className="btn-secondary" onClick={() => setIsRecoveringPassword(true)}>
+                Esqueci a senha
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="onboarding-block">
+            <h2 className="onboarding-subtitle">Recuperação de senha</h2>
+            <p className="muted small">
+              {forgotStep === 1
+                ? "Etapa 1 de 3 — informe o e-mail cadastrado."
+                : forgotStep === 2
+                  ? "Etapa 2 de 3 — informe o código recebido."
+                  : "Etapa 3 de 3 — crie a nova senha."}
+            </p>
 
-          {forgotStep === 2 ? (
-            <form className="form-grid form-grid--left" onSubmit={handleForgotConfirmCode}>
-              <label>
-                Código recebido
-                <input
-                  value={forgotCode}
-                  onChange={(e) => setForgotCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                  required
-                  minLength={6}
-                  maxLength={6}
-                  inputMode="numeric"
-                />
-              </label>
-              <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
-                <button type="button" className="btn-secondary" onClick={() => setForgotStep(1)}>
-                  Voltar
-                </button>
-                <button type="submit">Continuar</button>
-              </div>
-            </form>
-          ) : null}
+            {forgotStep === 1 ? (
+              <form className="form-grid form-grid--left" onSubmit={handleForgotRequestEmail}>
+                <label>
+                  E-mail
+                  <input type="email" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)} required />
+                </label>
+                <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+                  <button type="button" className="btn-secondary" onClick={() => setIsRecoveringPassword(false)}>
+                    Voltar
+                  </button>
+                  <button type="submit" disabled={forgotLoading}>
+                    {forgotLoading ? "Enviando…" : "Enviar código"}
+                  </button>
+                </div>
+              </form>
+            ) : null}
 
-          {forgotStep === 3 ? (
-            <form className="form-grid form-grid--left" onSubmit={handleForgotDefinePassword}>
-              <label>
-                Nova senha
-                <input
-                  type="password"
-                  value={forgotPassword}
-                  onChange={(e) => setForgotPassword(e.target.value)}
-                  required
-                  minLength={6}
-                  autoComplete="new-password"
-                />
-              </label>
-              <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
-                <button type="button" className="btn-secondary" onClick={() => setForgotStep(2)}>
-                  Voltar
-                </button>
-                <button type="submit" disabled={forgotLoading}>
-                  {forgotLoading ? "Salvando…" : "Definir nova senha"}
-                </button>
-              </div>
-            </form>
-          ) : null}
+            {forgotStep === 2 ? (
+              <form className="form-grid form-grid--left" onSubmit={handleForgotConfirmCode}>
+                <label>
+                  Código recebido
+                  <input
+                    value={forgotCode}
+                    onChange={(e) => setForgotCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    required
+                    minLength={6}
+                    maxLength={6}
+                    inputMode="numeric"
+                  />
+                </label>
+                <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+                  <button type="button" className="btn-secondary" onClick={() => setForgotStep(1)}>
+                    Voltar
+                  </button>
+                  <button type="submit">Continuar</button>
+                </div>
+              </form>
+            ) : null}
 
-          {forgotMsg ? <p className="muted success-note">{forgotMsg}</p> : null}
-          {forgotError ? <p className="error">{forgotError}</p> : null}
-        </div>
+            {forgotStep === 3 ? (
+              <form className="form-grid form-grid--left" onSubmit={handleForgotDefinePassword}>
+                <label>
+                  Nova senha
+                  <input
+                    type="password"
+                    value={forgotPassword}
+                    onChange={(e) => setForgotPassword(e.target.value)}
+                    required
+                    minLength={6}
+                    autoComplete="new-password"
+                  />
+                </label>
+                <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+                  <button type="button" className="btn-secondary" onClick={() => setForgotStep(2)}>
+                    Voltar
+                  </button>
+                  <button type="submit" disabled={forgotLoading}>
+                    {forgotLoading ? "Salvando…" : "Definir nova senha"}
+                  </button>
+                </div>
+              </form>
+            ) : null}
+
+            {forgotMsg ? <p className="muted success-note">{forgotMsg}</p> : null}
+            {forgotError ? <p className="error">{forgotError}</p> : null}
+          </div>
+        )}
 
         <a className="link-home" href="/">
           Voltar ao login

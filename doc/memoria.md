@@ -666,3 +666,13 @@
 
 - forgot password wizard 3 etapas
 - redirecionar para login apos reset
+
+## 2026-04-14 - Recuperação de senha com etapas exclusivas
+
+- Fluxo de recuperação agora aparece como wizard exclusivo (uma etapa por vez), ocultando bloco de primeiro acesso durante o processo.
+- Log: $log.
+
+### Palavras-chave para pesquisa futura
+
+- etapa exclusiva recuperar senha
+- ativar flow esconder primeiro acesso
