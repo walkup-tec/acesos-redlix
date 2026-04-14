@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import {
   CheckCircle2,
+  Eye,
+  EyeOff,
   FileImage,
   FileText,
   Info,
@@ -423,6 +425,7 @@ function App() {
 
   const [loginEmail, setLoginEmail] = useState("master@credilix.local");
   const [loginPassword, setLoginPassword] = useState("Master@123");
+  const [loginPasswordVisible, setLoginPasswordVisible] = useState(false);
 
   const [publicRoute] = useState(() => readPublicRoute());
   const [panelNotice, setPanelNotice] = useState<string>("");
@@ -1732,12 +1735,22 @@ function App() {
             </label>
             <label>
               Senha
-              <input
-                type="password"
-                value={loginPassword}
-                onChange={(e) => setLoginPassword(e.target.value)}
-                required
-              />
+              <div className="password-input-wrap">
+                <input
+                  type={loginPasswordVisible ? "text" : "password"}
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  required
+                />
+                <button
+                  type="button"
+                  className="password-visibility-btn"
+                  aria-label={loginPasswordVisible ? "Ocultar senha" : "Exibir senha"}
+                  onClick={() => setLoginPasswordVisible((current) => !current)}
+                >
+                  {loginPasswordVisible ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
             </label>
             <button type="submit" disabled={loginLoading}>
               {loginLoading ? "Entrando..." : "Entrar"}
@@ -1745,7 +1758,7 @@ function App() {
           </form>
           {error ? <p className="error">{error}</p> : null}
           <p className="auth-footer-links">
-            <a href="/ativar">Primeiro acesso, recuperar senha ou novo código</a>
+            <a href="/ativar">Esqueci minha senha</a>
           </p>
         </section>
       </main>

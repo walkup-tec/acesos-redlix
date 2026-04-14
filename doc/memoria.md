@@ -699,3 +699,17 @@
 
 - forgot-password smtp obrigatorio
 - erro explicito envio codigo
+
+## 2026-04-14 - Correção login: olho da senha + favicon
+
+- Login recebeu botão de mostrar/ocultar senha (ícone olho).
+- Link de recuperação no login ficou como `Esqueci minha senha`.
+- Favicon do `D:\Site Credilix` aplicado no frontend via `web/public/favicon.png`.
+- `web/index.html` atualizado para usar `favicon.png`.
+- Log: `doc/LOG-2026-04-14__133008__fix-login-olho-senha-e-favicon.md`.
+
+### Palavras-chave
+
+- olho senha
+- esqueci minha senha
+- favicon.png
