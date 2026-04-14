@@ -2160,6 +2160,7 @@ body[data-theme="light"] .content-modal__description {
 .users-toolbar {
   display: grid;
   gap: 0.55rem;
+  width: 100%;
 }
 
 .users-toolbar__top {
@@ -2168,6 +2169,11 @@ body[data-theme="light"] .content-modal__description {
   justify-content: space-between;
   gap: 0.65rem;
   flex-wrap: wrap;
+  width: 100%;
+}
+
+.users-toolbar .card-toolbar__actions {
+  margin-left: auto;
 }
 
 .users-toolbar__filter-select {

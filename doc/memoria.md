@@ -788,3 +788,16 @@
 - alinhamento usuarios toolbar
 - filtro status sem label
 - pesquisa esquerda
+
+## 2026-04-14 - Correção final de alinhamento no toolbar de usuários
+
+- Toolbar de usuários expandida para largura total do card.
+- Filtro + Atualizar fixados à direita com `margin-left: auto`.
+- Busca mantida abaixo do título à esquerda.
+- Log: `doc/LOG-2026-04-14__171450__fix-toolbar-usuarios-largura-completa.md`.
+
+### Palavras-chave
+
+- toolbar usuarios largura 100
+- filtro atualizar direita
+- pesquisa esquerda
