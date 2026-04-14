@@ -840,3 +840,14 @@
 
 - icone usuario logado menu lateral
 - popover nome email cpf
+
+## 2026-04-14 - Senha do master sincronizada com .env no startup
+
+- `ensureBootstrapMaster` passa a atualizar `password_hash` do master existente a partir de `BOOTSTRAP_MASTER_PASSWORD` a cada subida da API.
+- `reset_code` do master é limpo na sincronização.
+- Log: `doc/LOG-2026-04-14__183500__feat-sync-bootstrap-master-password-no-startup.md`.
+
+### Palavras-chave
+
+- bootstrap master sync password
+- BOOTSTRAP_MASTER_PASSWORD

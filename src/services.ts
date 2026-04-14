@@ -410,11 +410,30 @@ export async function ensureBootstrapMaster(): Promise<void> {
     .eq("email", config.bootstrapMasterEmail.toLowerCase())
     .maybeSingle<{ id: string }>();
 
+  const bootstrapPassword = config.bootstrapMasterPassword.trim();
+  if (!bootstrapPassword) {
+    throw new Error("BOOTSTRAP_MASTER_PASSWORD não pode estar vazio.");
+  }
+
   if (existingMaster) {
+    const masterPasswordHash = await bcrypt.hash(bootstrapPassword, 10);
+    const updatePayload: Record<string, unknown> = {
+      password_hash: masterPasswordHash,
+      reset_code: null,
+      updated_at: nowIso(),
+    };
+    const { error: updateError } = await supabase
+      .from("users")
+      .update(updatePayload)
+      .eq("id", existingMaster.id)
+      .eq("tenant_id", tenantId);
+    if (updateError) {
+      throw updateError;
+    }
     return;
   }
 
-  const masterPasswordHash = await bcrypt.hash(config.bootstrapMasterPassword, 10);
+  const masterPasswordHash = await bcrypt.hash(bootstrapPassword, 10);
   const masterSystemCode = await generateUniqueSystemCode(tenantId, "MASTER");
   const insertPayload: Record<string, unknown> = {
     id: uuid(),
