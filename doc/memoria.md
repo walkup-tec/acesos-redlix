@@ -851,3 +851,15 @@
 
 - bootstrap master sync password
 - BOOTSTRAP_MASTER_PASSWORD
+
+## 2026-04-14 - Mobile: viewport sem scroll horizontal na navegação
+
+- Em telas ≤900px, html/ody/#root/.app-shell/.shell-main com overflow-x: hidden e largura limitada a 100%, mais overscroll-behavior-x: none no body, para a página não "deslizar" ao arrastar nos lados.
+- .shell-body com min-width: 0 e max-width: 100%; .table-wrap com max-width: 100% mantendo scroll horizontal **só** nas tabelas.
+- Overlays/modais: calc(100% - …) em vez de 100vw onde aplicável; drawer 88% em vez de 88vw.
+- Log: doc/LOG-2026-04-14__191800__fix-mobile-viewport-sem-scroll-horizontal.md.
+
+### Palavras-chave para pesquisa futura
+
+- mobile overflow-x viewport credilix-acessos
+- table-wrap horizontal scroll only

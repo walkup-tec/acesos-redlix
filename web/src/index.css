@@ -429,7 +429,7 @@ button:active {
   z-index: 420;
   display: grid;
   gap: 0.55rem;
-  width: min(460px, calc(100vw - 1.7rem));
+  width: min(460px, calc(100% - 1.7rem));
 }
 
 .system-alert {
@@ -479,7 +479,7 @@ button:active {
   top: 0;
   left: 0;
   bottom: 0;
-  width: min(88vw, var(--nav-width));
+  width: min(88%, var(--nav-width));
   max-width: 300px;
   display: flex;
   flex-direction: column;
@@ -991,6 +991,8 @@ body[data-theme="dark"] .content-empty-state p {
 
 .shell-body {
   flex: 1;
+  min-width: 0;
+  max-width: 100%;
   padding: 0.85rem max(0.85rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom))
     max(0.85rem, env(safe-area-inset-left));
 }
@@ -1137,6 +1139,7 @@ body[data-theme="light"] .content-file-item__delete:hover {
 }
 
 .table-wrap {
+  max-width: 100%;
   overflow: auto;
   -webkit-overflow-scrolling: touch;
 }
@@ -1919,7 +1922,7 @@ body[data-theme="light"] .content-file-item__link:hover {
 
 .content-modal {
   position: relative;
-  width: min(502px, calc(100vw - 2rem));
+  width: min(502px, calc(100% - 2rem));
   background: #050a18;
   border: 1px solid rgba(124, 58, 237, 0.8);
   border-radius: var(--radius-lg);
@@ -2049,7 +2052,7 @@ body[data-theme="dark"] .content-modal .content-modal__confirm:hover {
 }
 
 .content-modal--confirm-delete {
-  width: min(560px, calc(100vw - 2rem));
+  width: min(560px, calc(100% - 2rem));
 }
 
 .content-modal__description {
@@ -2076,6 +2079,27 @@ body[data-theme="light"] .content-modal__description {
 }
 
 @media (max-width: 900px) {
+  /* Viewport: sem “arrastar” horizontal na página; tabelas continuam com scroll em .table-wrap */
+  html {
+    overflow-x: hidden;
+    width: 100%;
+  }
+
+  body {
+    overflow-x: hidden;
+    width: 100%;
+    max-width: 100%;
+    overscroll-behavior-x: none;
+  }
+
+  #root,
+  .app-shell,
+  .shell-main {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
   .shell-nav__top {
     flex-direction: row;
     align-items: center;
