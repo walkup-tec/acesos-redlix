@@ -809,3 +809,12 @@
 - Log: doc/LOG-2026-04-14__174500__fix-users-toolbar-stack-layout.md
 
 
+
+## 2026-04-14 - Busca de usuários: CPF com ou sem máscara
+
+- Pesquisa normaliza dígitos do termo e do CPF cadastrado; aceita entrada só numérica ou com `.` e `-`.
+- Log: `doc/LOG-2026-04-14__180000__fix-busca-usuarios-cpf-formatado.md`.
+
+### Palavras-chave
+
+- busca cpf normalizada

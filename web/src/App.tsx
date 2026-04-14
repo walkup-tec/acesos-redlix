@@ -694,8 +694,9 @@ function App() {
   }, [token]);
 
   const filteredUsers = useMemo(() => {
-    const query = usersSearchQuery.trim().toLowerCase();
-    const queryDigits = query.replace(/\D/g, "");
+    const searchRaw = usersSearchQuery.trim();
+    const queryLower = searchRaw.toLowerCase();
+    const queryDigitsOnly = searchRaw.replace(/\D/g, "");
 
     return users.filter((user) => {
       const lifecycle = formatUserLifecycleStatus(user);
@@ -703,21 +704,25 @@ function App() {
       if (usersStatusFilter === "INACTIVE" && lifecycle !== "Inativo") return false;
       if (usersStatusFilter === "PENDING" && lifecycle !== "Pendente") return false;
       if (usersStatusFilter === "REVIEW" && lifecycle !== "Aguardando Ativação") return false;
-      if (!query) return true;
+      if (!searchRaw) return true;
 
       const name = displayNameInUserList(user).toLowerCase();
       const email = (user.email ?? "").toLowerCase();
       const systemCode = (user.systemCode ?? "").toLowerCase();
       const id = (user.id ?? "").toLowerCase();
       const cpfRaw = user.profile?.cpf ?? "";
-      const cpfDigits = cpfRaw.replace(/\D/g, "");
+      const cpfDigitsOnly = cpfRaw.replace(/\D/g, "");
 
-      if (name.includes(query)) return true;
-      if (email.includes(query)) return true;
-      if (systemCode.includes(query)) return true;
-      if (id.includes(query)) return true;
-      if (cpfRaw.toLowerCase().includes(query)) return true;
-      if (queryDigits && cpfDigits.includes(queryDigits)) return true;
+      if (name.includes(queryLower)) return true;
+      if (email.includes(queryLower)) return true;
+      if (systemCode.includes(queryLower)) return true;
+      if (id.includes(queryLower)) return true;
+      if (cpfRaw.toLowerCase().includes(queryLower)) return true;
+      if (queryDigitsOnly.length > 0 && cpfDigitsOnly.length > 0) {
+        if (cpfDigitsOnly.includes(queryDigitsOnly) || queryDigitsOnly.includes(cpfDigitsOnly)) {
+          return true;
+        }
+      }
       return false;
     });
   }, [users, usersSearchQuery, usersStatusFilter]);
