@@ -904,3 +904,8 @@
 
 - Bug: .users-toolbar__top { row } global vinha depois do @media (max-width: 900px) e anulava o layout em coluna. Base agora é coluna; desktop em @media (min-width: 901px).
 - Log: doc/LOG-2026-04-14__213000__fix-cascade-css-toolbar-usuarios-mobile-first.md.
+
+## 2026-04-14 - Script SQL limpeza banco (tenant Credilix)
+
+- supabase/cleanup-banco-tenant-credilix.sql: remove commission_tables, contents, products, banks e users exceto master@credilix.local; ordem por FKs; tenant ajustável.
+- Log: doc/LOG-2026-04-14__220000__script-sql-limpeza-banco-tenant-credilix.md.
