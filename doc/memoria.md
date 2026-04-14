@@ -894,3 +894,8 @@
 
 - ≤900px: título, depois Atualizar, depois select de status, depois pesquisa; lex + order no bloco de ações.
 - Log: doc/LOG-2026-04-14__204500__style-usuarios-toolbar-mobile-ordem-vertical.md.
+
+## 2026-04-14 - Usuários: toolbar mobile refinada (largura select + altura WebKit)
+
+- Mobile: select com largura automática (não 100%); altura 2.5rem igual ao botão; select com appearance none + chevron SVG; pesquisa com min-height alinhada.
+- Log: doc/LOG-2026-04-14__210500__fix-usuarios-toolbar-mobile-alinhamento-altura-select.md.

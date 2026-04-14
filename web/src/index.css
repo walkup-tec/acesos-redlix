@@ -2161,15 +2161,16 @@ body[data-theme="light"] .content-modal__description {
 
   .users-toolbar__actions .users-toolbar__filter-select {
     order: 2;
-    width: 100%;
+    width: auto;
     max-width: 100%;
-    min-width: 0;
+    min-width: min(10.5rem, 100%);
     flex: none;
   }
 
   .users-toolbar__search-input {
     max-width: none;
     width: 100%;
+    box-sizing: border-box;
   }
 
   .shell-nav__top {
@@ -2848,5 +2849,53 @@ body[data-theme="light"] .content-folder:hover {
 
   .content-folders--inside .content-folder__open {
     width: 100%;
+  }
+}
+
+/*
+ * Usuários — mobile (≤900px): altura idêntica entre Atualizar e select (WebKit).
+ * Deve vir após `.btn-secondary` e regras globais de toolbar para ganhar na cascata.
+ */
+@media (max-width: 900px) {
+  .users-toolbar__actions .users-toolbar__filter-select,
+  .users-toolbar__actions .btn-secondary.card-toolbar__action-btn {
+    height: 2.5rem;
+    min-height: 2.5rem;
+    max-height: 2.5rem;
+    font-size: 0.84rem;
+    box-sizing: border-box;
+  }
+
+  .users-toolbar__actions .btn-secondary.card-toolbar__action-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    padding: 0 0.85rem;
+    line-height: 1;
+  }
+
+  .users-toolbar__actions .users-toolbar__filter-select {
+    -webkit-appearance: none;
+    appearance: none;
+    line-height: 2.5rem;
+    padding: 0 2.1rem 0 0.75rem;
+    background-color: rgba(255, 255, 255, 0.9);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%236b5f78' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.6rem center;
+    background-size: 0.85rem;
+  }
+
+  body[data-theme="dark"] .users-toolbar__actions .users-toolbar__filter-select {
+    background-color: #0f172a;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  }
+
+  .users-toolbar__search-input {
+    min-height: 2.5rem;
+    padding: 0.55rem 0.75rem;
+    line-height: 1.25;
+    box-sizing: border-box;
   }
 }
