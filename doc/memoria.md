@@ -889,3 +889,8 @@
 
 - Toolbar: regra única para filtro e .btn-secondary.card-toolbar__action-btn com mesmo min-height e padding.
 - Log: doc/LOG-2026-04-14__203000__style-usuarios-toolbar-select-altura-botao.md.
+
+## 2026-04-14 - Usuários: toolbar mobile em coluna (ordem pedida)
+
+- ≤900px: título, depois Atualizar, depois select de status, depois pesquisa; lex + order no bloco de ações.
+- Log: doc/LOG-2026-04-14__204500__style-usuarios-toolbar-mobile-ordem-vertical.md.
