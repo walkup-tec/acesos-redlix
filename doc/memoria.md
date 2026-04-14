@@ -602,3 +602,14 @@
 
 - status_reason limpar active
 - reativar usuario remover flag
+
+## 2026-04-14 - UI: contraste de texto em modais
+
+- Ajustado contraste de título e textos auxiliares (`.muted`) dentro de `modal-dialog` para melhorar leitura no modo claro.
+- Mantida paridade no modo escuro com regra específica para `body[data-theme="dark"] .modal-dialog .muted`.
+- Log: `doc/LOG-2026-04-14__072943__fix-contraste-texto-modal.md`.
+
+### Palavras-chave para pesquisa futura
+
+- modal contraste texto
+- muted modal claro

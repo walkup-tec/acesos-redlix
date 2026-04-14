@@ -2250,6 +2250,7 @@ body[data-theme="dark"] .btn-ghost:hover {
   margin: 0;
   padding: 1.1rem 1.15rem 1.15rem;
   text-align: left;
+  color: var(--brand-fg);
   pointer-events: auto;
 }
 
@@ -2266,6 +2267,11 @@ body[data-theme="dark"] .btn-ghost:hover {
   font-size: 1.15rem;
   font-weight: 700;
   letter-spacing: -0.02em;
+  color: var(--brand-fg);
+}
+
+.modal-dialog .muted {
+  color: color-mix(in srgb, var(--brand-fg) 68%, var(--brand-fg-muted));
 }
 
 .modal-dialog__close {
@@ -2348,6 +2354,10 @@ body[data-theme="dark"] .modal-dialog__close:hover {
   background: rgba(124, 58, 237, 0.34);
   border-color: rgba(124, 58, 237, 0.62);
   color: #ede9fe;
+}
+
+body[data-theme="dark"] .modal-dialog .muted {
+  color: color-mix(in srgb, var(--brand-fg) 70%, var(--brand-fg-muted));
 }
 
 .modal-dialog__form {
