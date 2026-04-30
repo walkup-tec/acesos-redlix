@@ -3,12 +3,16 @@
 -- =============================================================================
 -- Remove:
 --   - tabelas de comissão (commission_tables — inclui nomes/registros das tabelas)
+--   - repasses de líder (commission_table_leader_overrides)
 --   - conteúdos (contents — arquivos e marcadores de pasta)
+--   - logins banco (bank_login_requests)
 --   - produtos (products)
 --   - bancos (banks — nomes cadastrados)
 --   - usuários, exceto master@credilix.local
 --
--- Ordem respeita FKs: commission_tables → contents → products → banks → users
+-- Ordem respeita FKs:
+--   commission_table_leader_overrides → commission_tables → contents
+--   → bank_login_requests → products → banks → users
 --
 -- Como executar (Supabase):
 --   1. Dashboard → SQL Editor → colar este script
@@ -26,7 +30,9 @@ DECLARE
   tenant_name text := 'Credilix';  -- mesmo conceito que BOOTSTRAP_TENANT_NAME
   tid uuid;
   n_commission int;
+  n_commission_overrides int;
   n_contents int;
+  n_bank_logins int;
   n_products int;
   n_banks int;
   n_users_deleted int;
@@ -40,11 +46,17 @@ BEGIN
     RAISE EXCEPTION 'Tenant "%" não encontrado em public.tenants.', tenant_name;
   END IF;
 
+  DELETE FROM public.commission_table_leader_overrides WHERE tenant_id = tid;
+  GET DIAGNOSTICS n_commission_overrides = ROW_COUNT;
+
   DELETE FROM public.commission_tables WHERE tenant_id = tid;
   GET DIAGNOSTICS n_commission = ROW_COUNT;
 
   DELETE FROM public.contents WHERE tenant_id = tid;
   GET DIAGNOSTICS n_contents = ROW_COUNT;
+
+  DELETE FROM public.bank_login_requests WHERE tenant_id = tid;
+  GET DIAGNOSTICS n_bank_logins = ROW_COUNT;
 
   DELETE FROM public.products WHERE tenant_id = tid;
   GET DIAGNOSTICS n_products = ROW_COUNT;
@@ -57,8 +69,10 @@ BEGIN
     AND lower(trim(email)) <> lower('master@credilix.local');
   GET DIAGNOSTICS n_users_deleted = ROW_COUNT;
 
+  RAISE NOTICE 'commission_table_leader_overrides removidos: %', n_commission_overrides;
   RAISE NOTICE 'commission_tables removidos: %', n_commission;
   RAISE NOTICE 'contents removidos: %', n_contents;
+  RAISE NOTICE 'bank_login_requests removidos: %', n_bank_logins;
   RAISE NOTICE 'products removidos: %', n_products;
   RAISE NOTICE 'banks removidos: %', n_banks;
   RAISE NOTICE 'users removidos (exceto master): %', n_users_deleted;

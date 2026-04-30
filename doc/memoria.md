@@ -1,3 +1,17 @@
+## 2026-04-30 - Cleanup completo do tenant (exceto master)
+
+- Script de limpeza do Credilix atualizado para remover também `bank_login_requests` e `commission_table_leader_overrides`.
+- Mantida regra de preservar somente `master@credilix.local` em `public.users`.
+- Ordem de remoção ajustada para respeitar FKs e evitar resíduos de dados.
+- Log: `doc/LOG-2026-04-30__105500__cleanup-dados-tenant-exceto-master-e-deploy-pronto.md`.
+
+### Palavras-chave
+
+- cleanup tenant credilix master only
+- bank login requests delete
+- commission overrides delete
+- reset dados homologacao
+
 ## 2026-04-30 - Atualize tudo (backup + build + deploy pronto)
 
 - Backup seletivo executado via `C:\Scripts\backup-d-para-e.ps1` com sucesso.
