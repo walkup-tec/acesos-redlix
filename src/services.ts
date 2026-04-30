@@ -4,7 +4,7 @@ import path from "node:path";
 import { v4 as uuid } from "uuid";
 import { AuthContext, signInviteToken, signToken, verifyInviteToken } from "./auth";
 import { buildInviteEmailHtml, trySendMail } from "./mailer";
-import { Bank, CommissionTable, ContentItem, ContentType, Product, Tenant, TenantUser, UserRole, UserStatus } from "./types";
+import { Bank, BankLoginRequest, CommissionTable, ContentItem, ContentType, Product, Tenant, TenantUser, UserRole, UserStatus } from "./types";
 import { supabase } from "./supabase";
 import { config } from "./config";
 
@@ -14,6 +14,11 @@ let cachedHasSystemCodeColumn: boolean | null = null;
 let cachedHasStatusReasonColumn: boolean | null = null;
 let cachedHasContentDisplayNameColumn: boolean | null = null;
 let cachedHasCommissionObservationColumn: boolean | null = null;
+let cachedHasUserCreatedByColumn: boolean | null = null;
+let cachedHasUserLeaderColumn: boolean | null = null;
+let cachedHasCommissionOverridesTable: boolean | null = null;
+let cachedHasCommissionOverrideIsActiveColumn: boolean | null = null;
+let cachedHasBankLoginRequestsTable: boolean | null = null;
 
 export function errorMessageFromUnknown(e: unknown): string {
   if (e instanceof Error) {
@@ -147,6 +152,103 @@ async function hasCommissionObservationColumn(): Promise<boolean> {
   throw error;
 }
 
+async function hasUserCreatedByColumn(): Promise<boolean> {
+  if (cachedHasUserCreatedByColumn !== null) {
+    return cachedHasUserCreatedByColumn;
+  }
+  const { error } = await supabase.from("users").select("created_by_user_id").limit(1);
+  if (!error) {
+    cachedHasUserCreatedByColumn = true;
+    return true;
+  }
+  if (typeof error === "object" && error && "code" in error && (error as { code?: unknown }).code === "42703") {
+    cachedHasUserCreatedByColumn = false;
+    return false;
+  }
+  if (typeof error === "object" && error && "code" in error && (error as { code?: unknown }).code === "PGRST204") {
+    cachedHasUserCreatedByColumn = false;
+    return false;
+  }
+  throw error;
+}
+
+async function hasUserLeaderColumn(): Promise<boolean> {
+  if (cachedHasUserLeaderColumn !== null) {
+    return cachedHasUserLeaderColumn;
+  }
+  const { error } = await supabase.from("users").select("leader_user_id").limit(1);
+  if (!error) {
+    cachedHasUserLeaderColumn = true;
+    return true;
+  }
+  if (typeof error === "object" && error && "code" in error && (error as { code?: unknown }).code === "42703") {
+    cachedHasUserLeaderColumn = false;
+    return false;
+  }
+  if (typeof error === "object" && error && "code" in error && (error as { code?: unknown }).code === "PGRST204") {
+    cachedHasUserLeaderColumn = false;
+    return false;
+  }
+  throw error;
+}
+
+async function hasCommissionOverridesTable(): Promise<boolean> {
+  if (cachedHasCommissionOverridesTable !== null) {
+    return cachedHasCommissionOverridesTable;
+  }
+  const { error } = await supabase.from("commission_table_leader_overrides").select("id").limit(1);
+  if (!error) {
+    cachedHasCommissionOverridesTable = true;
+    return true;
+  }
+  if (typeof error === "object" && error && "code" in error && (error as { code?: unknown }).code === "PGRST205") {
+    cachedHasCommissionOverridesTable = false;
+    return false;
+  }
+  throw error;
+}
+
+async function hasCommissionOverrideIsActiveColumn(): Promise<boolean> {
+  if (cachedHasCommissionOverrideIsActiveColumn !== null) {
+    return cachedHasCommissionOverrideIsActiveColumn;
+  }
+  const { error } = await supabase.from("commission_table_leader_overrides").select("is_active").limit(1);
+  if (!error) {
+    cachedHasCommissionOverrideIsActiveColumn = true;
+    return true;
+  }
+  if (
+    typeof error === "object" &&
+    error &&
+    "code" in error &&
+    ((error as { code?: unknown }).code === "42703" || (error as { code?: unknown }).code === "PGRST204")
+  ) {
+    cachedHasCommissionOverrideIsActiveColumn = false;
+    return false;
+  }
+  if (typeof error === "object" && error && "code" in error && (error as { code?: unknown }).code === "PGRST205") {
+    cachedHasCommissionOverrideIsActiveColumn = false;
+    return false;
+  }
+  throw error;
+}
+
+async function hasBankLoginRequestsTable(): Promise<boolean> {
+  if (cachedHasBankLoginRequestsTable !== null) {
+    return cachedHasBankLoginRequestsTable;
+  }
+  const { error } = await supabase.from("bank_login_requests").select("id").limit(1);
+  if (!error) {
+    cachedHasBankLoginRequestsTable = true;
+    return true;
+  }
+  if (typeof error === "object" && error && "code" in error && (error as { code?: unknown }).code === "PGRST205") {
+    cachedHasBankLoginRequestsTable = false;
+    return false;
+  }
+  throw error;
+}
+
 function normalizeBirthDateInput(input: string): string | null {
   const value = input.trim();
   if (!value) return null;
@@ -248,14 +350,138 @@ function randomCode(length = 6): string {
   return code;
 }
 
+function normalizeRole(value: unknown): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .trim()
+    .toUpperCase();
+}
+
 function assertCanManageUsers(auth: AuthContext): void {
-  if (!(auth.role === "MASTER" || auth.canManageUsers)) {
+  if (!(normalizeRole(auth.role) === "MASTER" || auth.canManageUsers)) {
     throw new Error("Sem permissão para gerenciar usuários.");
   }
 }
 
 function isMasterAuth(auth: AuthContext): boolean {
-  return auth.role === "MASTER";
+  return normalizeRole(auth.role) === "MASTER";
+}
+
+function resolveTeamLeaderId(current: TenantUser, usersById: Map<string, TenantUser>): string | null {
+  if (normalizeRole(current.role) === "MASTER") {
+    return null;
+  }
+  if (normalizeRole(current.role) === "LIDER") {
+    return current.id;
+  }
+  if (current.leaderUserId && current.leaderUserId !== current.id) {
+    return current.leaderUserId;
+  }
+  if (current.createdByUserId) {
+    const creator = usersById.get(current.createdByUserId);
+    if (creator && normalizeRole(creator.role) === "LIDER") {
+      return creator.id;
+    }
+    if (creator && creator.leaderUserId && creator.leaderUserId !== creator.id) {
+      return creator.leaderUserId;
+    }
+  }
+  if (current.leaderUserId) {
+    const maybeLeader = usersById.get(current.leaderUserId);
+    if (maybeLeader && normalizeRole(maybeLeader.role) === "LIDER") {
+      return maybeLeader.id;
+    }
+  }
+  return null;
+}
+
+async function listUsersForTenant(tenantId: string): Promise<TenantUser[]> {
+  const { data, error } = await supabase.from("users").select("*").eq("tenant_id", tenantId);
+  if (error) {
+    throw error;
+  }
+  return (data ?? []).map((row) => mapUser(row as Record<string, unknown>));
+}
+
+async function getVisibleUserIds(auth: AuthContext): Promise<Set<string> | null> {
+  if (isMasterAuth(auth)) {
+    return null;
+  }
+  const users = await listUsersForTenant(auth.tenantId);
+  const usersById = new Map(users.map((user) => [user.id, user]));
+  const current = usersById.get(auth.userId);
+  if (!current) {
+    return new Set([auth.userId]);
+  }
+  const leaderId = resolveTeamLeaderId(current, usersById);
+  if (!leaderId) {
+    return new Set([auth.userId]);
+  }
+  return new Set(
+    users
+      .filter((user) => user.id === leaderId || user.leaderUserId === leaderId || user.createdByUserId === leaderId)
+      .map((user) => user.id),
+  );
+}
+
+async function assertUserIsVisibleToActor(auth: AuthContext, targetUserId: string): Promise<void> {
+  const visibleIds = await getVisibleUserIds(auth);
+  if (visibleIds === null) {
+    return;
+  }
+  if (!visibleIds.has(targetUserId)) {
+    throw new Error("Sem permissão para acessar este usuário.");
+  }
+}
+
+async function filterRowsByVisibleCreator<T extends { createdBy: string }>(auth: AuthContext, rows: T[]): Promise<T[]> {
+  const visibleIds = await getVisibleUserIds(auth);
+  if (visibleIds === null) {
+    return rows;
+  }
+  return rows.filter((row) => visibleIds.has(row.createdBy));
+}
+
+async function getAuthUser(auth: AuthContext): Promise<TenantUser | null> {
+  const { data, error } = await supabase
+    .from("users")
+    .select("*")
+    .eq("id", auth.userId)
+    .eq("tenant_id", auth.tenantId)
+    .maybeSingle<Record<string, unknown>>();
+  if (error) {
+    throw error;
+  }
+  return data ? mapUser(data) : null;
+}
+
+async function getMasterUserIds(tenantId: string): Promise<Set<string>> {
+  const { data, error } = await supabase.from("users").select("id,role").eq("tenant_id", tenantId);
+  if (error) {
+    throw error;
+  }
+  return new Set(
+    (data ?? [])
+      .filter((row) => normalizeRole((row as { role?: unknown }).role) === "MASTER")
+      .map((row) => String((row as { id?: unknown }).id ?? "")),
+  );
+}
+
+async function resolveLeaderIdForAuth(auth: AuthContext): Promise<string | null> {
+  if (normalizeRole(auth.role) === "MASTER") {
+    return null;
+  }
+  const current = await getAuthUser(auth);
+  if (!current) {
+    return null;
+  }
+  if (normalizeRole(current.role) === "LIDER") {
+    return current.id;
+  }
+  const allUsers = await listUsersForTenant(auth.tenantId);
+  const usersById = new Map(allUsers.map((u) => [u.id, u]));
+  return resolveTeamLeaderId(current, usersById);
 }
 
 export type InviteUserPermissions = {
@@ -311,8 +537,8 @@ function normalizeInviteEmail(raw: string): string {
 }
 
 function assertCanEditCommissionTables(auth: AuthContext): void {
-  if (!isMasterAuth(auth) && !auth.permCommissionTables) {
-    throw new Error("Sem permissão para criar ou editar tabelas de comissão.");
+  if (!isMasterAuth(auth)) {
+    throw new Error("Somente o usuário MASTER pode criar ou editar tabelas de comissão.");
   }
 }
 
@@ -377,7 +603,7 @@ export function toPublicTenantUser(user: TenantUser): PublicTenantUser {
 /** Lista de usuários: anexos só para Master ou quem pode gerenciar usuários. */
 export function toPublicTenantUserForViewer(user: TenantUser, auth: AuthContext): PublicTenantUser {
   const pub = toPublicTenantUser(user);
-  if (auth.role !== "MASTER" && !auth.canManageUsers) {
+  if (normalizeRole(auth.role) !== "MASTER" && !auth.canManageUsers) {
     pub.documents = undefined;
   }
   return pub;
@@ -550,6 +776,9 @@ export async function inviteUser(
   payload: { email: string; permissions: InviteUserPermissions },
 ): Promise<InviteUserResult> {
   assertCanManageUsers(auth);
+  if (payload.permissions.role === "LIDER" && !isMasterAuth(auth)) {
+    throw new Error("Somente o usuário MASTER pode criar líderes.");
+  }
   if (!hasAnyInvitePermission(payload.permissions)) {
     throw new Error("Selecione pelo menos uma permissão.");
   }
@@ -575,6 +804,7 @@ export async function inviteUser(
   const user: TenantUser = {
     id: uuid(),
     tenantId: auth.tenantId,
+    createdByUserId: auth.userId,
     systemCode,
     fullName: INVITED_PENDING_FULL_NAME,
     email,
@@ -589,9 +819,37 @@ export async function inviteUser(
     createdAt: nowIso(),
     updatedAt: nowIso(),
   };
+  const hasLeaderColumn = await hasUserLeaderColumn();
+  if (hasLeaderColumn) {
+    if (p.role === "LIDER") {
+      user.leaderUserId = user.id;
+    } else if (normalizeRole(auth.role) === "LIDER") {
+      user.leaderUserId = auth.userId;
+    } else {
+      const { data: inviterRow, error: inviterError } = await supabase
+        .from("users")
+        .select("*")
+        .eq("id", auth.userId)
+        .eq("tenant_id", auth.tenantId)
+        .maybeSingle<Record<string, unknown>>();
+      if (inviterError) {
+        throw inviterError;
+      }
+      const inviter = inviterRow ? mapUser(inviterRow) : undefined;
+      if (inviter) {
+        user.leaderUserId = inviter.leaderUserId;
+      }
+    }
+  }
   const insertPayload = toUserInsert(user);
   if (!shouldUseSystemCode) {
     delete insertPayload.system_code;
+  }
+  if (!(await hasUserCreatedByColumn())) {
+    delete insertPayload.created_by_user_id;
+  }
+  if (!hasLeaderColumn) {
+    delete insertPayload.leader_user_id;
   }
 
   const inviteJwt = signInviteToken(user.id);
@@ -735,6 +993,7 @@ export async function completeRegistration(
 
 export async function approveUser(auth: AuthContext, userId: string): Promise<{ user: TenantUser; verificationCode: string }> {
   assertCanManageUsers(auth);
+  await assertUserIsVisibleToActor(auth, userId);
   const { data: row, error: findError } = await supabase
     .from("users")
     .select("*")
@@ -801,6 +1060,7 @@ export async function verifyFirstAccess(email: string, code: string): Promise<vo
 
 export async function blockUser(auth: AuthContext, userId: string, blocked: boolean): Promise<TenantUser> {
   assertCanManageUsers(auth);
+  await assertUserIsVisibleToActor(auth, userId);
   const { data: row, error: findError } = await supabase
     .from("users")
     .select("*")
@@ -851,6 +1111,10 @@ export async function updateUserProfileByManager(
   payload: UpdateUserProfilePayload,
 ): Promise<TenantUser> {
   assertCanManageUsers(auth);
+  await assertUserIsVisibleToActor(auth, userId);
+  if (payload.role === "LIDER" && !isMasterAuth(auth)) {
+    throw new Error("Somente o usuário MASTER pode definir papel LIDER.");
+  }
   const reason = payload.reason.trim();
   if (!reason) {
     throw new Error("Informe o motivo da alteração.");
@@ -957,6 +1221,7 @@ export async function setUserLifecycleStatus(
   reason?: string,
 ): Promise<TenantUser> {
   assertCanManageUsers(auth);
+  await assertUserIsVisibleToActor(auth, userId);
   const cleanedReason = reason?.trim() ?? "";
   if ((status === "INACTIVE" || status === "BLOCKED") && !cleanedReason) {
     throw new Error("Informe o motivo da ação.");
@@ -991,6 +1256,7 @@ export async function setUserLifecycleStatus(
 
 export async function resetUserAccessByManager(auth: AuthContext, userId: string): Promise<TenantUser> {
   assertCanManageUsers(auth);
+  await assertUserIsVisibleToActor(auth, userId);
   const { data: row, error: findError } = await supabase
     .from("users")
     .select("*")
@@ -1167,7 +1433,11 @@ export async function listUsers(auth: AuthContext): Promise<TenantUser[]> {
       }
     }
   }
-  return users;
+  const visibleIds = await getVisibleUserIds(auth);
+  if (visibleIds === null) {
+    return users;
+  }
+  return users.filter((user) => visibleIds.has(user.id));
 }
 
 export async function createProduct(auth: AuthContext, name: string): Promise<Product> {
@@ -1196,13 +1466,47 @@ export async function listProducts(auth: AuthContext): Promise<Product[]> {
   if (error) {
     throw error;
   }
-  return (data ?? []).map((row) => ({
+  const rows = (data ?? []).map((row) => ({
     id: String(row.id),
     tenantId: String(row.tenant_id),
     name: String(row.name),
     createdBy: String(row.created_by),
     createdAt: String(row.created_at),
   }));
+  if (isMasterAuth(auth)) {
+    return rows;
+  }
+  const visibleIds = await getVisibleUserIds(auth);
+  if (visibleIds === null) {
+    return rows;
+  }
+  const masterIds = await getMasterUserIds(auth.tenantId);
+  const baseVisible = rows.filter((row) => visibleIds.has(row.createdBy) || masterIds.has(row.createdBy));
+
+  // Garantir que perfis não-master vejam produtos que já possuem tabelas base do master,
+  // mesmo se o produto tiver sido criado originalmente por usuário legado.
+  const { data: tableRows, error: tableError } = await supabase
+    .from("commission_tables")
+    .select("product_id,created_by")
+    .eq("tenant_id", auth.tenantId);
+  if (tableError) {
+    throw tableError;
+  }
+  const masterProductIds = new Set(
+    (tableRows ?? [])
+      .filter((row) => masterIds.has(String(row.created_by ?? "")))
+      .map((row) => String(row.product_id ?? "")),
+  );
+  if (masterProductIds.size === 0) {
+    return baseVisible;
+  }
+  const byId = new Map(baseVisible.map((item) => [item.id, item]));
+  for (const product of rows) {
+    if (masterProductIds.has(product.id) && !byId.has(product.id)) {
+      byId.set(product.id, product);
+    }
+  }
+  return Array.from(byId.values());
 }
 
 export async function createBank(auth: AuthContext, name: string): Promise<Bank> {
@@ -1231,13 +1535,282 @@ export async function listBanks(auth: AuthContext): Promise<Bank[]> {
   if (error) {
     throw error;
   }
-  return (data ?? []).map((row) => ({
+  const rows = (data ?? []).map((row) => ({
     id: String(row.id),
     tenantId: String(row.tenant_id),
     name: String(row.name),
     createdBy: String(row.created_by),
     createdAt: String(row.created_at),
   }));
+  return filterRowsByVisibleCreator(auth, rows);
+}
+
+export async function createBankLoginRequest(
+  auth: AuthContext,
+  payload: { productId: string; bankName: string; targetUserId?: string },
+): Promise<BankLoginRequest> {
+  if (!(await hasBankLoginRequestsTable())) {
+    throw new Error("Tabela bank_login_requests não encontrada. Execute o SQL de atualização no Supabase.");
+  }
+  const normalizedBankName = payload.bankName.trim();
+  if (!normalizedBankName) {
+    throw new Error("Banco é obrigatório.");
+  }
+  const { data: product, error: productError } = await supabase
+    .from("products")
+    .select("id,created_by")
+    .eq("id", payload.productId)
+    .eq("tenant_id", auth.tenantId)
+    .maybeSingle<{ id: string; created_by: string }>();
+  if (productError) {
+    throw productError;
+  }
+  if (!product) {
+    throw new Error("Produto não encontrado.");
+  }
+  const visibleIds = await getVisibleUserIds(auth);
+  const masterIds = await getMasterUserIds(auth.tenantId);
+  if (visibleIds !== null && !visibleIds.has(String(product.created_by)) && !masterIds.has(String(product.created_by))) {
+    throw new Error("Sem permissão para solicitar login neste produto.");
+  }
+
+  const requester = await getAuthUser(auth);
+  if (!requester) {
+    throw new Error("Usuário autenticado não encontrado.");
+  }
+  const normalizedTargetUserId = payload.targetUserId?.trim() || "";
+  if ((normalizeRole(auth.role) === "MASTER" || normalizeRole(auth.role) === "LIDER") && !normalizedTargetUserId) {
+    throw new Error("Selecione o usuário para a solicitação.");
+  }
+  const targetUserId = normalizedTargetUserId || auth.userId;
+  const users = await listUsersForTenant(auth.tenantId);
+  const targetUser = users.find((item) => item.id === targetUserId);
+  if (!targetUser) {
+    throw new Error("Usuário selecionado não encontrado.");
+  }
+  await assertUserIsVisibleToActor(auth, targetUser.id);
+
+  let supervisorUserId: string | undefined;
+  if (String(targetUser.role).toUpperCase() === "LIDER") {
+    const masterId = Array.from(masterIds)[0];
+    supervisorUserId = masterId;
+  } else if (String(targetUser.role).toUpperCase() !== "MASTER") {
+    supervisorUserId = targetUser.leaderUserId ?? undefined;
+  }
+
+  const normalizedBankLower = normalizedBankName.toLocaleLowerCase("pt-BR");
+  const { data: existingRequest, error: existingRequestError } = await supabase
+    .from("bank_login_requests")
+    .select("id,bank_name")
+    .eq("tenant_id", auth.tenantId)
+    .eq("product_id", payload.productId)
+    .eq("target_user_id", targetUser.id)
+    .limit(200);
+  if (existingRequestError) {
+    throw existingRequestError;
+  }
+  const alreadyExists = (existingRequest ?? []).some(
+    (row) => String(row.bank_name ?? "").trim().toLocaleLowerCase("pt-BR") === normalizedBankLower,
+  );
+  if (alreadyExists) {
+    throw new Error("Já existe login solicitado para este usuário no mesmo banco e produto.");
+  }
+
+  const request: BankLoginRequest = {
+    id: uuid(),
+    tenantId: auth.tenantId,
+    requesterUserId: auth.userId,
+    supervisorUserId,
+    targetUserId: targetUser.id,
+    productId: payload.productId,
+    bankName: normalizedBankName,
+    status: "PENDING",
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
+  };
+
+  const { error } = await supabase.from("bank_login_requests").insert({
+    id: request.id,
+    tenant_id: request.tenantId,
+    requester_user_id: request.requesterUserId,
+    supervisor_user_id: request.supervisorUserId ?? null,
+    target_user_id: request.targetUserId ?? null,
+    product_id: request.productId,
+    bank_name: request.bankName,
+    status: request.status,
+    created_at: request.createdAt,
+    updated_at: request.updatedAt,
+  });
+  if (error) {
+    if (typeof error === "object" && error && "code" in error && String((error as { code?: unknown }).code ?? "") === "23505") {
+      throw new Error("Já existe login solicitado para este usuário no mesmo banco e produto.");
+    }
+    throw error;
+  }
+  return request;
+}
+
+export async function listBankLoginRequests(auth: AuthContext): Promise<BankLoginRequest[]> {
+  if (!(await hasBankLoginRequestsTable())) {
+    return [];
+  }
+  let query = supabase.from("bank_login_requests").select("*").eq("tenant_id", auth.tenantId).order("created_at", { ascending: false });
+  if (normalizeRole(auth.role) === "MASTER") {
+    // MASTER vê tudo
+  } else if (normalizeRole(auth.role) === "LIDER") {
+    query = query.or(`supervisor_user_id.eq.${auth.userId},requester_user_id.eq.${auth.userId}`);
+  } else {
+    query = query.or(`requester_user_id.eq.${auth.userId},target_user_id.eq.${auth.userId}`);
+  }
+  const { data, error } = await query;
+  if (error) {
+    throw error;
+  }
+  return (data ?? []).map((row) => ({
+    id: String(row.id),
+    tenantId: String(row.tenant_id),
+    requesterUserId: String(row.requester_user_id),
+    supervisorUserId: row.supervisor_user_id ? String(row.supervisor_user_id) : undefined,
+    targetUserId: row.target_user_id ? String(row.target_user_id) : undefined,
+    productId: String(row.product_id),
+    bankName: String(row.bank_name),
+    status: String(row.status) === "RESOLVED" ? "RESOLVED" : "PENDING",
+    loginUser: row.login_user ? String(row.login_user) : undefined,
+    loginPassword: row.login_password ? String(row.login_password) : undefined,
+    resolvedByUserId: row.resolved_by_user_id ? String(row.resolved_by_user_id) : undefined,
+    resolvedAt: row.resolved_at ? String(row.resolved_at) : undefined,
+    requesterViewedAt: row.requester_viewed_at ? String(row.requester_viewed_at) : undefined,
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+  }));
+}
+
+export async function getPendingBankLoginRequestCount(auth: AuthContext): Promise<number> {
+  if (!(await hasBankLoginRequestsTable())) {
+    return 0;
+  }
+  let query = supabase.from("bank_login_requests").select("id", { count: "exact", head: true }).eq("tenant_id", auth.tenantId);
+  if (normalizeRole(auth.role) === "MASTER") {
+    query = query.eq("status", "PENDING");
+  } else if (normalizeRole(auth.role) === "LIDER") {
+    query = query.eq("status", "PENDING").eq("supervisor_user_id", auth.userId);
+  } else {
+    query = query.eq("status", "RESOLVED").or(`requester_user_id.eq.${auth.userId},target_user_id.eq.${auth.userId}`).is("requester_viewed_at", null);
+  }
+  const { count, error } = await query;
+  if (error) {
+    throw error;
+  }
+  return count ?? 0;
+}
+
+export async function respondBankLoginRequest(
+  auth: AuthContext,
+  requestId: string,
+  payload: { loginUser: string; loginPassword: string },
+): Promise<BankLoginRequest> {
+  if (!(await hasBankLoginRequestsTable())) {
+    throw new Error("Tabela bank_login_requests não encontrada.");
+  }
+  const { data, error } = await supabase
+    .from("bank_login_requests")
+    .select("*")
+    .eq("id", requestId)
+    .eq("tenant_id", auth.tenantId)
+    .maybeSingle<Record<string, unknown>>();
+  if (error) {
+    throw error;
+  }
+  if (!data) {
+    throw new Error("Solicitação não encontrada.");
+  }
+  const request = data;
+  const isMaster = normalizeRole(auth.role) === "MASTER";
+  const isSupervisor = String(request.supervisor_user_id ?? "") === auth.userId;
+  if (!isMaster && !isSupervisor) {
+    throw new Error("Sem permissão para responder esta solicitação.");
+  }
+  if (String(request.status ?? "") === "RESOLVED") {
+    throw new Error("Solicitação já respondida.");
+  }
+  const loginUser = payload.loginUser.trim();
+  const loginPassword = payload.loginPassword.trim();
+  if (!loginUser || !loginPassword) {
+    throw new Error("Usuário e senha são obrigatórios.");
+  }
+  const now = nowIso();
+  const { data: updated, error: updateError } = await supabase
+    .from("bank_login_requests")
+    .update({
+      status: "RESOLVED",
+      login_user: loginUser,
+      login_password: loginPassword,
+      resolved_by_user_id: auth.userId,
+      resolved_at: now,
+      requester_viewed_at: null,
+      updated_at: now,
+    })
+    .eq("id", requestId)
+    .eq("tenant_id", auth.tenantId)
+    .select("*")
+    .maybeSingle<Record<string, unknown>>();
+  if (updateError) {
+    throw updateError;
+  }
+  if (!updated) {
+    throw new Error("Não foi possível responder a solicitação.");
+  }
+  return {
+    id: String(updated.id),
+    tenantId: String(updated.tenant_id),
+    requesterUserId: String(updated.requester_user_id),
+    supervisorUserId: updated.supervisor_user_id ? String(updated.supervisor_user_id) : undefined,
+    targetUserId: updated.target_user_id ? String(updated.target_user_id) : undefined,
+    productId: String(updated.product_id),
+    bankName: String(updated.bank_name),
+    status: "RESOLVED",
+    loginUser: updated.login_user ? String(updated.login_user) : undefined,
+    loginPassword: updated.login_password ? String(updated.login_password) : undefined,
+    resolvedByUserId: updated.resolved_by_user_id ? String(updated.resolved_by_user_id) : undefined,
+    resolvedAt: updated.resolved_at ? String(updated.resolved_at) : undefined,
+    requesterViewedAt: updated.requester_viewed_at ? String(updated.requester_viewed_at) : undefined,
+    createdAt: String(updated.created_at),
+    updatedAt: String(updated.updated_at),
+  };
+}
+
+export async function markBankLoginRequestViewed(auth: AuthContext, requestId: string): Promise<void> {
+  if (!(await hasBankLoginRequestsTable())) {
+    return;
+  }
+  const now = nowIso();
+  const { data: row, error: rowError } = await supabase
+    .from("bank_login_requests")
+    .select("requester_user_id,target_user_id")
+    .eq("id", requestId)
+    .eq("tenant_id", auth.tenantId)
+    .eq("status", "RESOLVED")
+    .maybeSingle<{ requester_user_id: string; target_user_id?: string }>();
+  if (rowError) {
+    throw rowError;
+  }
+  if (!row) {
+    return;
+  }
+  const canView =
+    String(row.requester_user_id ?? "") === auth.userId || String(row.target_user_id ?? "") === auth.userId;
+  if (!canView) {
+    throw new Error("Sem permissão para visualizar este login.");
+  }
+  const { error } = await supabase
+    .from("bank_login_requests")
+    .update({ requester_viewed_at: now, updated_at: now })
+    .eq("id", requestId)
+    .eq("tenant_id", auth.tenantId)
+    .eq("status", "RESOLVED");
+  if (error) {
+    throw error;
+  }
 }
 
 export async function createCommissionTable(
@@ -1245,14 +1818,18 @@ export async function createCommissionTable(
   payload: { productId: string; bank: string; name: string; deadline: string; commissionPercent: number; observation?: string },
 ): Promise<CommissionTable> {
   assertCanEditCommissionTables(auth);
+  const visibleIds = await getVisibleUserIds(auth);
   const { data: product } = await supabase
     .from("products")
-    .select("id")
+    .select("id,created_by")
     .eq("id", payload.productId)
     .eq("tenant_id", auth.tenantId)
-    .maybeSingle<{ id: string }>();
+    .maybeSingle<{ id: string; created_by: string }>();
   if (!product) {
     throw new Error("Produto não encontrado para este tenant.");
+  }
+  if (visibleIds !== null && !visibleIds.has(String(product.created_by))) {
+    throw new Error("Sem permissão para usar este produto.");
   }
   const table: CommissionTable = {
     id: uuid(),
@@ -1287,6 +1864,93 @@ export async function createCommissionTable(
   return table;
 }
 
+export async function applyLeaderCommissionRepasse(
+  auth: AuthContext,
+  tableId: string,
+  commissionPercent: number,
+): Promise<CommissionTable> {
+  if (auth.role !== "LIDER") {
+    throw new Error("Apenas usuários LIDER podem utilizar tabela com repasse.");
+  }
+  if (!Number.isFinite(commissionPercent) || commissionPercent <= 0) {
+    throw new Error("Repasse inválido.");
+  }
+  if (!(await hasCommissionOverridesTable())) {
+    throw new Error("Tabela de repasse por líder não encontrada. Execute o SQL de atualização no Supabase.");
+  }
+
+  const { data: baseTable, error: baseError } = await supabase
+    .from("commission_tables")
+    .select("*")
+    .eq("id", tableId)
+    .eq("tenant_id", auth.tenantId)
+    .maybeSingle<Record<string, unknown>>();
+  if (baseError) {
+    throw baseError;
+  }
+  if (!baseTable) {
+    throw new Error("Tabela de comissão não encontrada.");
+  }
+  const masterIds = await getMasterUserIds(auth.tenantId);
+  if (!masterIds.has(String(baseTable.created_by))) {
+    throw new Error("Somente tabelas criadas pelo MASTER podem ser utilizadas para repasse.");
+  }
+  const baseCommission = Number(baseTable.commission_percent);
+  if (commissionPercent >= baseCommission) {
+    throw new Error(`Repasse deve ser menor que a comissão master (${baseCommission}%).`);
+  }
+
+  const payload = {
+    tenant_id: auth.tenantId,
+    commission_table_id: tableId,
+    leader_user_id: auth.userId,
+    commission_percent: commissionPercent,
+    is_active: true,
+    updated_at: nowIso(),
+  };
+  const { error: upsertError } = await supabase
+    .from("commission_table_leader_overrides")
+    .upsert(payload, { onConflict: "tenant_id,commission_table_id,leader_user_id" });
+  if (upsertError) {
+    throw upsertError;
+  }
+
+  return {
+    id: String(baseTable.id),
+    tenantId: String(baseTable.tenant_id),
+    productId: String(baseTable.product_id),
+    bank: String(baseTable.bank),
+    name: String(baseTable.name),
+    deadline: String(baseTable.deadline),
+    commissionPercent,
+    baseCommissionPercent: baseCommission,
+    leaderRepassePercent: commissionPercent,
+    leaderRepasseDefined: true,
+    leaderRepasseActive: true,
+    observation: baseTable.observation ? String(baseTable.observation) : undefined,
+    createdBy: String(baseTable.created_by),
+    createdAt: String(baseTable.created_at),
+  };
+}
+
+export async function deactivateLeaderCommissionRepasse(auth: AuthContext, tableId: string): Promise<void> {
+  if (auth.role !== "LIDER") {
+    throw new Error("Apenas usuários LIDER podem desativar tabela utilizada.");
+  }
+  if (!(await hasCommissionOverridesTable())) {
+    throw new Error("Tabela de repasse por líder não encontrada. Execute o SQL de atualização no Supabase.");
+  }
+  const { error } = await supabase
+    .from("commission_table_leader_overrides")
+    .update({ is_active: false, updated_at: nowIso() })
+    .eq("tenant_id", auth.tenantId)
+    .eq("commission_table_id", tableId)
+    .eq("leader_user_id", auth.userId);
+  if (error) {
+    throw error;
+  }
+}
+
 export async function listCommissionTables(auth: AuthContext, productId?: string): Promise<CommissionTable[]> {
   let query = supabase.from("commission_tables").select("*").eq("tenant_id", auth.tenantId);
   if (productId) {
@@ -1296,7 +1960,7 @@ export async function listCommissionTables(auth: AuthContext, productId?: string
   if (error) {
     throw error;
   }
-  return (data ?? []).map((row) => ({
+  const baseRows = (data ?? []).map((row) => ({
     id: String(row.id),
     tenantId: String(row.tenant_id),
     productId: String(row.product_id),
@@ -1304,10 +1968,80 @@ export async function listCommissionTables(auth: AuthContext, productId?: string
     name: String(row.name),
     deadline: String(row.deadline),
     commissionPercent: Number(row.commission_percent),
+    baseCommissionPercent: Number(row.commission_percent),
     observation: row.observation ? String(row.observation) : undefined,
     createdBy: String(row.created_by),
     createdAt: String(row.created_at),
   }));
+  if (isMasterAuth(auth)) {
+    return baseRows.map((row) => ({ ...row, leaderRepasseDefined: false }));
+  }
+
+  const normalizedAuthRole = normalizeRole(auth.role);
+  let leaderId = await resolveLeaderIdForAuth(auth);
+  if (!leaderId && normalizedAuthRole === "LIDER") {
+    leaderId = auth.userId;
+  }
+  if (!leaderId) {
+    return [];
+  }
+  const overridesEnabled = await hasCommissionOverridesTable();
+  const tableIds = baseRows.map((row) => row.id);
+  const overridesByTableId = new Map<string, { commissionPercent: number; isActive: boolean }>();
+  if (overridesEnabled && tableIds.length > 0) {
+    const hasIsActiveColumn = await hasCommissionOverrideIsActiveColumn();
+    const { data: overrides, error: overrideError } = await supabase
+      .from("commission_table_leader_overrides")
+      .select(hasIsActiveColumn ? "commission_table_id,commission_percent,is_active" : "commission_table_id,commission_percent")
+      .eq("tenant_id", auth.tenantId)
+      .eq("leader_user_id", leaderId)
+      .in("commission_table_id", tableIds);
+    if (overrideError) {
+      throw overrideError;
+    }
+    for (const item of ((overrides ?? []) as unknown as Array<{ commission_table_id: string; commission_percent: number; is_active?: boolean }>)) {
+      overridesByTableId.set(String(item.commission_table_id), {
+        commissionPercent: Number(item.commission_percent),
+        isActive: hasIsActiveColumn ? Boolean(item.is_active) : true,
+      });
+    }
+  }
+
+  const masterIds = await getMasterUserIds(auth.tenantId);
+  if (normalizedAuthRole === "LIDER") {
+    return baseRows
+      .filter((row) => masterIds.has(row.createdBy))
+      .map((row) => {
+        const override = overridesByTableId.get(row.id);
+        const repasse = override?.commissionPercent;
+        return {
+          ...row,
+          commissionPercent: repasse ?? row.commissionPercent,
+          leaderRepassePercent: repasse,
+          leaderRepasseDefined: repasse !== undefined,
+          leaderRepasseActive: override?.isActive ?? false,
+        };
+      });
+  }
+
+  const scopedRows: CommissionTable[] = [];
+  for (const row of baseRows) {
+    if (!masterIds.has(row.createdBy)) {
+      continue;
+    }
+    const override = overridesByTableId.get(row.id);
+    if (!override || !override.isActive) {
+      continue;
+    }
+    scopedRows.push({
+      ...row,
+      commissionPercent: override.commissionPercent,
+      leaderRepassePercent: override.commissionPercent,
+      leaderRepasseDefined: true,
+      leaderRepasseActive: true,
+    });
+  }
+  return scopedRows;
 }
 
 export async function updateCommissionTable(
@@ -1316,6 +2050,21 @@ export async function updateCommissionTable(
   payload: { bank: string; name: string; deadline: string; commissionPercent: number; observation?: string },
 ): Promise<CommissionTable> {
   assertCanEditCommissionTables(auth);
+  const visibleIds = await getVisibleUserIds(auth);
+  if (visibleIds !== null) {
+    const { data: scopeRow, error: scopeError } = await supabase
+      .from("commission_tables")
+      .select("created_by")
+      .eq("id", tableId)
+      .eq("tenant_id", auth.tenantId)
+      .maybeSingle<{ created_by: string }>();
+    if (scopeError) {
+      throw scopeError;
+    }
+    if (!scopeRow || !visibleIds.has(String(scopeRow.created_by))) {
+      throw new Error("Sem permissão para editar esta tabela.");
+    }
+  }
   const updatePayload: Record<string, unknown> = {
     bank: payload.bank,
     name: payload.name,
@@ -1361,6 +2110,21 @@ export async function updateCommissionTable(
 
 export async function deleteCommissionTable(auth: AuthContext, tableId: string): Promise<void> {
   assertCanEditCommissionTables(auth);
+  const visibleIds = await getVisibleUserIds(auth);
+  if (visibleIds !== null) {
+    const { data: scopeRow, error: scopeError } = await supabase
+      .from("commission_tables")
+      .select("created_by")
+      .eq("id", tableId)
+      .eq("tenant_id", auth.tenantId)
+      .maybeSingle<{ created_by: string }>();
+    if (scopeError) {
+      throw scopeError;
+    }
+    if (!scopeRow || !visibleIds.has(String(scopeRow.created_by))) {
+      throw new Error("Sem permissão para excluir esta tabela.");
+    }
+  }
   const { error } = await supabase
     .from("commission_tables")
     .delete()
@@ -1373,23 +2137,27 @@ export async function deleteCommissionTable(auth: AuthContext, tableId: string):
 
 export async function deleteCommissionTablesByProduct(auth: AuthContext, productId: string): Promise<number> {
   assertCanEditCommissionTables(auth);
+  const visibleIds = await getVisibleUserIds(auth);
   const { data: rows, error: listError } = await supabase
     .from("commission_tables")
-    .select("id")
+    .select("id,created_by")
     .eq("tenant_id", auth.tenantId)
     .eq("product_id", productId);
   if (listError) {
     throw listError;
   }
-  const total = (rows ?? []).length;
+  const scopedRows =
+    visibleIds === null ? (rows ?? []) : (rows ?? []).filter((row) => visibleIds.has(String(row.created_by ?? "")));
+  const total = scopedRows.length;
   if (total === 0) {
     return 0;
   }
+  const tableIds = scopedRows.map((row) => String(row.id));
   const { error } = await supabase
     .from("commission_tables")
     .delete()
     .eq("tenant_id", auth.tenantId)
-    .eq("product_id", productId);
+    .in("id", tableIds);
   if (error) {
     throw error;
   }
@@ -1398,6 +2166,21 @@ export async function deleteCommissionTablesByProduct(auth: AuthContext, product
 
 export async function updateProductName(auth: AuthContext, productId: string, name: string): Promise<Product> {
   assertCanEditCommissionTables(auth);
+  const visibleIds = await getVisibleUserIds(auth);
+  if (visibleIds !== null) {
+    const { data: scopeRow, error: scopeError } = await supabase
+      .from("products")
+      .select("created_by")
+      .eq("id", productId)
+      .eq("tenant_id", auth.tenantId)
+      .maybeSingle<{ created_by: string }>();
+    if (scopeError) {
+      throw scopeError;
+    }
+    if (!scopeRow || !visibleIds.has(String(scopeRow.created_by))) {
+      throw new Error("Sem permissão para editar este produto.");
+    }
+  }
   const normalized = name.trim();
   if (!normalized) {
     throw new Error("Nome do produto é obrigatório.");
@@ -1517,7 +2300,7 @@ export async function listContents(auth: AuthContext, type?: string): Promise<Co
   if (error) {
     throw error;
   }
-  return (data ?? []).map((row) => ({
+  const rows = (data ?? []).map((row) => ({
     id: String(row.id),
     tenantId: String(row.tenant_id),
     title: String(row.title),
@@ -1528,6 +2311,7 @@ export async function listContents(auth: AuthContext, type?: string): Promise<Co
     createdBy: String(row.created_by),
     createdAt: String(row.created_at),
   }));
+  return filterRowsByVisibleCreator(auth, rows);
 }
 
 export async function getContentFileForDownload(
@@ -1537,15 +2321,19 @@ export async function getContentFileForDownload(
   assertCanViewContents(auth);
   const { data: row, error } = await supabase
     .from("contents")
-    .select("file_path,type")
+    .select("file_path,type,created_by")
     .eq("id", contentId)
     .eq("tenant_id", auth.tenantId)
-    .maybeSingle<{ file_path: string; type: string }>();
+    .maybeSingle<{ file_path: string; type: string; created_by: string }>();
   if (error) {
     throw new Error(errorMessageFromUnknown(error));
   }
   if (!row) {
     throw new Error("Conteúdo não encontrado.");
+  }
+  const visibleIds = await getVisibleUserIds(auth);
+  if (visibleIds !== null && !visibleIds.has(String(row.created_by))) {
+    throw new Error("Sem permissão para acessar este conteúdo.");
   }
   const baseName = path.basename(String(row.file_path));
   const absolutePath = path.resolve(uploadsRoot, baseName);
@@ -1556,17 +2344,21 @@ export async function getContentFileForDownload(
 
 export async function deleteContentById(auth: AuthContext, contentId: string): Promise<void> {
   assertCanEditContents(auth);
+  const visibleIds = await getVisibleUserIds(auth);
   const { data: row, error } = await supabase
     .from("contents")
-    .select("id,file_path")
+    .select("id,file_path,created_by")
     .eq("id", contentId)
     .eq("tenant_id", auth.tenantId)
-    .maybeSingle<{ id: string; file_path: string }>();
+    .maybeSingle<{ id: string; file_path: string; created_by: string }>();
   if (error) {
     throw new Error(errorMessageFromUnknown(error));
   }
   if (!row) {
     throw new Error("Conteúdo não encontrado.");
+  }
+  if (visibleIds !== null && !visibleIds.has(String(row.created_by))) {
+    throw new Error("Sem permissão para excluir este conteúdo.");
   }
   const baseName = path.basename(String(row.file_path));
   const absolutePath = path.resolve(uploadsRoot, baseName);
@@ -1584,6 +2376,7 @@ export async function deleteContentById(auth: AuthContext, contentId: string): P
 
 export async function deleteContentsByFolder(auth: AuthContext, folderPath: string): Promise<number> {
   assertCanEditContents(auth);
+  const visibleIds = await getVisibleUserIds(auth);
   const normalized = folderPath
     .split("/")
     .map((part) => part.trim())
@@ -1594,7 +2387,7 @@ export async function deleteContentsByFolder(auth: AuthContext, folderPath: stri
   }
   const { data, error } = await supabase
     .from("contents")
-    .select("id,title")
+    .select("id,title,created_by")
     .eq("tenant_id", auth.tenantId);
   if (error) {
     throw error;
@@ -1606,6 +2399,9 @@ export async function deleteContentsByFolder(auth: AuthContext, folderPath: stri
         .map((part) => part.trim())
         .filter(Boolean)
         .join("/");
+      if (visibleIds !== null && !visibleIds.has(String(row.created_by ?? ""))) {
+        return false;
+      }
       return title === normalized || title.startsWith(`${normalized}/`);
     })
     .map((row) => String(row.id));
@@ -1636,6 +2432,8 @@ function mapUser(row: Record<string, unknown>): TenantUser {
   return {
     id: String(row.id),
     tenantId: String(row.tenant_id),
+    createdByUserId: row.created_by_user_id ? String(row.created_by_user_id) : undefined,
+    leaderUserId: row.leader_user_id ? String(row.leader_user_id) : undefined,
     systemCode: row.system_code ? String(row.system_code) : undefined,
     fullName: String(row.full_name),
     email: String(row.email),
@@ -1687,6 +2485,8 @@ function toUserInsert(user: TenantUser): Record<string, unknown> {
   return {
     id: user.id,
     tenant_id: user.tenantId,
+    created_by_user_id: user.createdByUserId ?? null,
+    leader_user_id: user.leaderUserId ?? null,
     system_code: user.systemCode ?? null,
     full_name: user.fullName,
     email: user.email,

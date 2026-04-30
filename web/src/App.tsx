@@ -28,12 +28,13 @@ import {
   readPublicRoute,
 } from "./onboarding-ui";
 
-type ModuleKey = "users" | "products" | "contents";
+type ModuleKey = "users" | "products" | "contents" | "bankLogins";
 
 const MODULE_TITLE: Record<ModuleKey, string> = {
   users: "Usuários",
   products: "Tabela de Comissão",
   contents: "Conteúdos",
+  bankLogins: "Login Banco",
 };
 
 type Branding = {
@@ -69,10 +70,11 @@ type SessionUser = {
 
 const SESSION_STORAGE_KEY = "credilix_session";
 const THEME_STORAGE_KEY = "credilix_theme";
-const BANKS_API_UNAVAILABLE_KEY = "credilix_banks_api_unavailable";
 const CONTENT_FOLDERS_STORAGE_KEY = "credilix_content_folders";
 const CONTENT_FILE_NAMES_STORAGE_KEY = "credilix_content_file_names";
+const LIGHT_LOGO_URL = "/branding-assets/logo-credilix-dark.png";
 const DARK_LOGO_URL = "/branding-assets/logo-credilix-light.png";
+const FALLBACK_LOGO_URL = "/favicon.svg";
 
 function readStoredToken(): string {
   try {
@@ -93,14 +95,6 @@ function readStoredTheme(): "light" | "dark" {
     return value === "dark" ? "dark" : "light";
   } catch {
     return "light";
-  }
-}
-
-function readBanksApiUnavailable(): boolean {
-  try {
-    return localStorage.getItem(BANKS_API_UNAVAILABLE_KEY) === "1";
-  } catch {
-    return false;
   }
 }
 
@@ -240,6 +234,10 @@ function RailModuleIcon({ module }: { module: ModuleKey }) {
       return <Percent {...RAIL_ICON_PROPS} aria-hidden />;
     case "contents":
       return <FileText {...RAIL_ICON_PROPS} aria-hidden />;
+    case "bankLogins":
+      return (
+        <i className="bi bi-bell-fill rail-bell-icon" aria-hidden />
+      );
   }
 }
 
@@ -262,6 +260,10 @@ type CommissionTable = {
   name: string;
   deadline: string;
   commissionPercent: number;
+  baseCommissionPercent?: number;
+  leaderRepassePercent?: number;
+  leaderRepasseDefined?: boolean;
+  leaderRepasseActive?: boolean;
   observation?: string;
   productId: string;
 };
@@ -273,6 +275,23 @@ type CommissionTableEditDraft = {
   deadline: string;
   commissionPercent: string;
   observation: string;
+};
+
+type BankLoginRequest = {
+  id: string;
+  requesterUserId: string;
+  supervisorUserId?: string;
+  targetUserId?: string;
+  productId: string;
+  bankName: string;
+  status: "PENDING" | "RESOLVED";
+  loginUser?: string;
+  loginPassword?: string;
+  resolvedByUserId?: string;
+  resolvedAt?: string;
+  requesterViewedAt?: string;
+  createdAt: string;
+  updatedAt?: string;
 };
 
 type Content = {
@@ -429,9 +448,27 @@ function App() {
   const [users, setUsers] = useState<User[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [banks, setBanks] = useState<Bank[]>([]);
-  const [banksApiUnavailable, setBanksApiUnavailable] = useState(() => readBanksApiUnavailable());
   const [tables, setTables] = useState<CommissionTable[]>([]);
   const [contents, setContents] = useState<Content[]>([]);
+  const [bankLoginRequests, setBankLoginRequests] = useState<BankLoginRequest[]>([]);
+  const [pendingBankLoginCount, setPendingBankLoginCount] = useState(0);
+  const [bellPulse, setBellPulse] = useState(false);
+  const [moduleAlertCounts, setModuleAlertCounts] = useState<{ users: number; products: number; contents: number }>({
+    users: 0,
+    products: 0,
+    contents: 0,
+  });
+  const [bankLoginSubmitLoading, setBankLoginSubmitLoading] = useState(false);
+  const [bankLoginProductId, setBankLoginProductId] = useState("");
+  const [bankLoginBankName, setBankLoginBankName] = useState("");
+  const [bankLoginTargetUserId, setBankLoginTargetUserId] = useState("");
+  const [bankLoginUserInput, setBankLoginUserInput] = useState("");
+  const [respondBankLoginDraft, setRespondBankLoginDraft] = useState<BankLoginRequest | null>(null);
+  const [respondLoginUser, setRespondLoginUser] = useState("");
+  const [respondLoginPassword, setRespondLoginPassword] = useState("");
+  const [respondBankLoginLoading, setRespondBankLoginLoading] = useState(false);
+  const [viewBankLoginDraft, setViewBankLoginDraft] = useState<BankLoginRequest | null>(null);
+  const [copiedBankLoginField, setCopiedBankLoginField] = useState<"" | "user" | "password">("");
   const [usersRefreshLoading, setUsersRefreshLoading] = useState(false);
   const [usersStatusFilter, setUsersStatusFilter] = useState<"ALL" | "ACTIVE" | "INACTIVE" | "PENDING" | "REVIEW">("ALL");
   const [usersSearchQuery, setUsersSearchQuery] = useState("");
@@ -444,6 +481,18 @@ function App() {
   const [panelNotice, setPanelNotice] = useState<string>("");
   const [inviteRole, setInviteRole] = useState<InviteRolePreset>("VENDEDOR");
   const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [productFormLoading, setProductFormLoading] = useState(false);
+  const [commissionEditLoading, setCommissionEditLoading] = useState(false);
+  const [commissionDeleteLoading, setCommissionDeleteLoading] = useState(false);
+  const [repasseSaveLoading, setRepasseSaveLoading] = useState(false);
+  const [repasseDeactivateTableId, setRepasseDeactivateTableId] = useState("");
+  const [productEditLoading, setProductEditLoading] = useState(false);
+  const [productDeleteTablesLoading, setProductDeleteTablesLoading] = useState(false);
+  const [folderCreateLoading, setFolderCreateLoading] = useState(false);
+  const [fileUploadLoading, setFileUploadLoading] = useState(false);
+  const [contentDeleteLoading, setContentDeleteLoading] = useState(false);
+  const [folderDeleteLoading, setFolderDeleteLoading] = useState(false);
   const [canManageUsersPermission, setCanManageUsersPermission] = useState(false);
   const [permViewContents, setPermViewContents] = useState(true);
   const [permCreateManagers, setPermCreateManagers] = useState(false);
@@ -501,6 +550,14 @@ function App() {
   const [pendingDeleteProductTablesId, setPendingDeleteProductTablesId] = useState("");
   const [pendingDeleteProductTablesLabel, setPendingDeleteProductTablesLabel] = useState("");
   const [editingCommissionTable, setEditingCommissionTable] = useState<CommissionTableEditDraft | null>(null);
+  const [utilizeTableDraft, setUtilizeTableDraft] = useState<{
+    id: string;
+    bank: string;
+    name: string;
+    deadline: string;
+    baseCommissionPercent: number;
+    commissionPercent: string;
+  } | null>(null);
   const [editingProduct, setEditingProduct] = useState<{ id: string; name: string } | null>(null);
   const [newFolderName, setNewFolderName] = useState("");
   const [uploadDisplayName, setUploadDisplayName] = useState("");
@@ -516,6 +573,7 @@ function App() {
   const [userReasonHoverUserId, setUserReasonHoverUserId] = useState<string | null>(null);
   const [userReasonPinnedUserId, setUserReasonPinnedUserId] = useState<string | null>(null);
   const [isLoggedUserInfoOpen, setIsLoggedUserInfoOpen] = useState(false);
+  const [loggedUserEmailCopied, setLoggedUserEmailCopied] = useState(false);
 
   useEffect(() => {
     void loadBranding();
@@ -606,44 +664,103 @@ function App() {
     }
   }, [token, session]);
 
+  const loadJson = useCallback(
+    async <T,>(path: string, label: string): Promise<T> => {
+      if (!token) {
+        throw new Error("Sessão expirada.");
+      }
+      const response = await fetch(apiUrl(path), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const body = (await response.json().catch(() => ({}))) as { message?: string };
+      if (!response.ok) {
+        throw new Error(body.message ?? `Falha ao carregar ${label}.`);
+      }
+      return body as T;
+    },
+    [token],
+  );
+
+  const refreshUsersOnly = useCallback(async () => {
+    try {
+      const nextUsers = await loadJson<User[]>("/users", "usuários");
+      setUsers(Array.isArray(nextUsers) ? nextUsers : []);
+    } catch {
+      // silencioso para não poluir UX em sync realtime
+    }
+  }, [loadJson]);
+
+  const refreshCommissionOnly = useCallback(async () => {
+    try {
+      const [nextProducts, nextBanks, nextTables] = await Promise.all([
+        loadJson<Product[]>("/products", "produtos"),
+        loadJson<Bank[]>("/banks", "bancos"),
+        loadJson<CommissionTable[]>("/commission-tables", "tabelas"),
+      ]);
+      setProducts(Array.isArray(nextProducts) ? nextProducts : []);
+      setBanks(Array.isArray(nextBanks) ? nextBanks : []);
+      setTables(Array.isArray(nextTables) ? nextTables : []);
+    } catch {
+      // silencioso para não poluir UX em sync realtime
+    }
+  }, [loadJson]);
+
+  const refreshCommissionOnlyWithDelta = useCallback(async (): Promise<number> => {
+    try {
+      const [nextProducts, nextBanks, nextTablesRaw] = await Promise.all([
+        loadJson<Product[]>("/products", "produtos"),
+        loadJson<Bank[]>("/banks", "bancos"),
+        loadJson<CommissionTable[]>("/commission-tables", "tabelas"),
+      ]);
+      const nextTables = Array.isArray(nextTablesRaw) ? nextTablesRaw : [];
+      const before = new Set(tables.map((item) => item.id));
+      const added = nextTables.reduce((acc, item) => (before.has(item.id) ? acc : acc + 1), 0);
+      setProducts(Array.isArray(nextProducts) ? nextProducts : []);
+      setBanks(Array.isArray(nextBanks) ? nextBanks : []);
+      setTables(nextTables);
+      return added;
+    } catch {
+      return 0;
+    }
+  }, [loadJson, tables]);
+
+  const refreshContentsOnly = useCallback(async () => {
+    try {
+      const nextContents = await loadJson<Content[]>("/contents", "conteúdos");
+      setContents(Array.isArray(nextContents) ? nextContents : []);
+    } catch {
+      // silencioso para não poluir UX em sync realtime
+    }
+  }, [loadJson]);
+
+  const refreshBankLoginOnly = useCallback(async () => {
+    try {
+      const [nextRequests, nextCount] = await Promise.all([
+        loadJson<BankLoginRequest[]>("/bank-login-requests", "solicitações"),
+        loadJson<{ count: number }>("/bank-login-requests/pending-count", "pendências"),
+      ]);
+      setBankLoginRequests(Array.isArray(nextRequests) ? nextRequests : []);
+      setPendingBankLoginCount(Number(nextCount?.count ?? 0));
+    } catch {
+      // silencioso para não poluir UX em sync realtime
+    }
+  }, [loadJson]);
+
   const refreshAll = useCallback(async () => {
     const authToken = token;
     if (!authToken) {
       return;
     }
     setError("");
-    const headers = { Authorization: `Bearer ${authToken}` };
-    const loadJson = async <T,>(path: string, label: string): Promise<T> => {
-      const response = await fetch(apiUrl(path), { headers });
-      const body = (await response.json().catch(() => ({}))) as { message?: string };
-      if (!response.ok) {
-        throw new Error(body.message ?? `Falha ao carregar ${label}.`);
-      }
-      return body as T;
-    };
 
-    const loadBanksCompat = async (): Promise<{ items: Bank[]; unavailable: boolean }> => {
-      if (banksApiUnavailable) {
-        return { items: [], unavailable: true };
-      }
-      const response = await fetch(apiUrl("/banks"), { headers });
-      if (response.status === 404) {
-        return { items: [], unavailable: true };
-      }
-      const body = (await response.json().catch(() => ({}))) as { message?: string } | Bank[];
-      if (!response.ok) {
-        const msg = typeof body === "object" && body && "message" in body ? body.message : undefined;
-        throw new Error(msg ?? "Falha ao carregar bancos.");
-      }
-      return { items: Array.isArray(body) ? body : [], unavailable: false };
-    };
-
-    const [u, p, b, t, c] = await Promise.allSettled([
+    const [u, p, b, t, c, r, rc] = await Promise.allSettled([
       loadJson<User[]>("/users", "usuários"),
       loadJson<Product[]>("/products", "produtos"),
-      loadBanksCompat(),
+      loadJson<Bank[]>("/banks", "bancos"),
       loadJson<CommissionTable[]>("/commission-tables", "tabelas"),
       loadJson<Content[]>("/contents", "conteúdos"),
+      loadJson<BankLoginRequest[]>("/bank-login-requests", "solicitações"),
+      loadJson<{ count: number }>("/bank-login-requests/pending-count", "pendências"),
     ]);
 
     const failures: string[] = [];
@@ -659,21 +776,9 @@ function App() {
       failures.push(p.reason instanceof Error ? p.reason.message : "produtos");
     }
     if (b.status === "fulfilled") {
-      setBanks(Array.isArray(b.value.items) ? b.value.items : []);
-      setBanksApiUnavailable(b.value.unavailable);
-      try {
-        localStorage.setItem(BANKS_API_UNAVAILABLE_KEY, b.value.unavailable ? "1" : "0");
-      } catch {
-        /* ignore */
-      }
-      if (b.value.unavailable) {
-        setIsTypingNewBank(true);
-        setSelectedBankValue("");
-      }
+      setBanks(Array.isArray(b.value) ? b.value : []);
     } else {
-      // Não bloquear a tela nem poluir o banner inicial por falha de bancos.
-      setBanks([]);
-      setBanksApiUnavailable(false);
+      failures.push(b.reason instanceof Error ? b.reason.message : "bancos");
     }
     if (t.status === "fulfilled") {
       setTables(Array.isArray(t.value) ? t.value : []);
@@ -685,11 +790,129 @@ function App() {
     } else {
       failures.push(c.reason instanceof Error ? c.reason.message : "conteúdos");
     }
+    if (r.status === "fulfilled") {
+      setBankLoginRequests(Array.isArray(r.value) ? r.value : []);
+    } else {
+      failures.push(r.reason instanceof Error ? r.reason.message : "solicitações");
+    }
+    if (rc.status === "fulfilled") {
+      setPendingBankLoginCount(Number(rc.value?.count ?? 0));
+    } else {
+      failures.push(rc.reason instanceof Error ? rc.reason.message : "pendências");
+    }
 
     if (failures.length > 0) {
       setError(failures.join(" · "));
     }
-  }, [token, banksApiUnavailable]);
+  }, [token, loadJson]);
+
+  useEffect(() => {
+    if (!token) return;
+    const streamUrl = `${apiUrl("/events")}?token=${encodeURIComponent(token)}`;
+    const source = new EventSource(streamUrl);
+    source.onmessage = (event) => {
+      let eventType = "";
+      try {
+        const parsed = JSON.parse(event.data) as { type?: string };
+        eventType = String(parsed.type ?? "");
+      } catch {
+        eventType = "";
+      }
+      setBellPulse(true);
+      window.setTimeout(() => setBellPulse(false), 900);
+      if (eventType === "users-updated") {
+        if (activeModule !== "users") {
+          setModuleAlertCounts((prev) => ({ ...prev, users: prev.users + 1 }));
+        }
+        void refreshUsersOnly();
+        return;
+      }
+      if (eventType === "commission-tables-updated") {
+        if (session?.role?.toUpperCase() === "VENDEDOR") {
+          void (async () => {
+            const added = await refreshCommissionOnlyWithDelta();
+            if (activeModule !== "products" && added > 0) {
+              setModuleAlertCounts((prev) => ({ ...prev, products: prev.products + 1 }));
+            }
+          })();
+          return;
+        }
+        if (activeModule !== "products") {
+          setModuleAlertCounts((prev) => ({ ...prev, products: prev.products + 1 }));
+        }
+        void refreshCommissionOnly();
+        return;
+      }
+      if (eventType === "commission-repasse-defined") {
+        if (session?.role?.toUpperCase() === "VENDEDOR" && activeModule !== "products") {
+          setModuleAlertCounts((prev) => ({ ...prev, products: prev.products + 1 }));
+        }
+        void refreshCommissionOnly();
+        return;
+      }
+      if (eventType === "contents-updated") {
+        if (activeModule !== "contents") {
+          setModuleAlertCounts((prev) => ({ ...prev, contents: prev.contents + 1 }));
+        }
+        void refreshContentsOnly();
+        return;
+      }
+      if (eventType === "bank-login-updated") {
+        void refreshBankLoginOnly();
+        return;
+      }
+      void refreshAll();
+    };
+    source.onerror = () => {
+      // browser auto-reconnects
+    };
+    return () => {
+      source.close();
+    };
+  }, [
+    token,
+    refreshAll,
+    refreshUsersOnly,
+    refreshCommissionOnly,
+    refreshCommissionOnlyWithDelta,
+    refreshContentsOnly,
+    refreshBankLoginOnly,
+    activeModule,
+    session,
+  ]);
+
+  // Fallback de ressincronização para não depender apenas de SSE.
+  // Evita necessidade de refresh manual quando algum evento é perdido.
+  useEffect(() => {
+    if (!token) return;
+    const timer = window.setInterval(() => {
+      if (activeModule === "products") {
+        void refreshCommissionOnly();
+      } else if (activeModule === "users") {
+        void refreshUsersOnly();
+      } else if (activeModule === "contents") {
+        void refreshContentsOnly();
+      } else if (activeModule === "bankLogins") {
+        void refreshBankLoginOnly();
+      }
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [token, activeModule, refreshCommissionOnly, refreshUsersOnly, refreshContentsOnly, refreshBankLoginOnly]);
+
+  useEffect(() => {
+    if (!token) return;
+    if (session?.role?.toUpperCase() !== "VENDEDOR") return;
+    if (activeModule === "products") return;
+    const timer = window.setInterval(() => {
+      void (async () => {
+        const added = await refreshCommissionOnlyWithDelta();
+        if (added > 0) {
+          setModuleAlertCounts((prev) => ({ ...prev, products: prev.products + 1 }));
+        }
+      })();
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [token, session, activeModule, refreshCommissionOnlyWithDelta]);
 
   const handleRefreshUsers = useCallback(async () => {
     if (!token) return;
@@ -827,12 +1050,21 @@ function App() {
   }, [isTypingNewBank, selectedBankValue, banks]);
 
   const isMaster = Boolean(session && session.role.toUpperCase() === "MASTER");
+  const isLeader = Boolean(session && session.role.toUpperCase() === "LIDER");
   const canCreateUsers = Boolean(session && (isMaster || session.canManageUsers));
-  const canEditCommissionTables = Boolean(session && (isMaster || session.permCommissionTables));
+  const canEditCommissionTables = Boolean(session && isMaster);
   const canViewCommissionTables = Boolean(session);
   const canViewContents = Boolean(session && (isMaster || session.permViewContents || session.permContents));
   const canEditContents = Boolean(session && (isMaster || session.permContents));
-  const activeLogoUrl = theme === "dark" ? DARK_LOGO_URL : branding?.logoUrl ?? DARK_LOGO_URL;
+  const preferredLogoUrl = theme === "dark" ? DARK_LOGO_URL : branding?.logoUrl || LIGHT_LOGO_URL;
+  const [logoLoadFailed, setLogoLoadFailed] = useState(false);
+  const [logoUnavailable, setLogoUnavailable] = useState(false);
+  const visibleLogoUrl = logoLoadFailed ? FALLBACK_LOGO_URL : preferredLogoUrl || FALLBACK_LOGO_URL;
+
+  useEffect(() => {
+    setLogoLoadFailed(false);
+    setLogoUnavailable(false);
+  }, [preferredLogoUrl]);
 
   const applyRolePreset = useCallback((role: InviteRolePreset) => {
     const preset = ROLE_PRESETS[role];
@@ -849,6 +1081,7 @@ function App() {
       { key: "users", label: "Usuários", short: "Usu." },
       { key: "products", label: "Tabela de Comissão", short: "Tab." },
       { key: "contents", label: "Conteúdos", short: "Cont." },
+      { key: "bankLogins", label: "Login Banco", short: "Login" },
     ];
     return all.filter((item) => {
       if (isMaster) {
@@ -866,6 +1099,31 @@ function App() {
       return true;
     });
   }, [isMaster, canCreateUsers, canViewCommissionTables, canViewContents]);
+
+  useEffect(() => {
+    if (activeModule === "users" || activeModule === "products" || activeModule === "contents") {
+      setModuleAlertCounts((prev) => ({ ...prev, [activeModule]: 0 }));
+    }
+  }, [activeModule]);
+
+  useEffect(() => {
+    if (!token) return;
+    if (activeModule === "products") {
+      void refreshCommissionOnly();
+      return;
+    }
+    if (activeModule === "users") {
+      void refreshUsersOnly();
+      return;
+    }
+    if (activeModule === "contents") {
+      void refreshContentsOnly();
+      return;
+    }
+    if (activeModule === "bankLogins") {
+      void refreshBankLoginOnly();
+    }
+  }, [token, activeModule, refreshCommissionOnly, refreshUsersOnly, refreshContentsOnly, refreshBankLoginOnly]);
 
   useEffect(() => {
     if (!session) {
@@ -890,6 +1148,34 @@ function App() {
     }
     return Array.from(values).sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [tables]);
+
+  const bankLoginProductOptions = useMemo(() => {
+    return products
+      .map((product) => ({
+        id: product.id,
+        name: product.name,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  }, [products]);
+
+  const bankLoginUserOptions = useMemo(
+    () =>
+      users.map((item) => ({
+        id: item.id,
+        label: `${displayNameInUserList(item)} - ${item.email}`,
+      })),
+    [users],
+  );
+
+  const bankLoginRequestedItems = useMemo(
+    () => bankLoginRequests.filter((item) => item.status !== "RESOLVED"),
+    [bankLoginRequests],
+  );
+
+  const bankLoginCreatedItems = useMemo(
+    () => bankLoginRequests.filter((item) => item.status === "RESOLVED"),
+    [bankLoginRequests],
+  );
 
   const filteredTables = useMemo(
     () =>
@@ -1063,6 +1349,9 @@ function App() {
 
   async function handleCreateUser(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
+    if (inviteLoading) {
+      return;
+    }
     setError("");
     if (!canCreateUsers) {
       setError("Sem permissão para criar usuários.");
@@ -1072,6 +1361,7 @@ function App() {
       return;
     }
     try {
+      setInviteLoading(true);
       setPanelNotice("");
       const response = await fetch(apiUrl("/users/invite"), {
         method: "POST",
@@ -1105,6 +1395,8 @@ function App() {
       await refreshAll();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Não foi possível criar usuário.");
+    } finally {
+      setInviteLoading(false);
     }
   }
 
@@ -1317,8 +1609,10 @@ function App() {
 
   async function handleCreateProduct(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
+    if (productFormLoading) return;
     setError("");
     try {
+      setProductFormLoading(true);
       let productId = "";
       if (isTypingNewProduct) {
         const normalizedName = productName.trim();
@@ -1347,23 +1641,12 @@ function App() {
             setError(msg);
             return;
           }
-          if (banksApiUnavailable) {
-            bankValue = normalizedBankName;
+          const existingBank = banks.find((bank) => bank.name.trim().toLowerCase() === normalizedBankName.toLowerCase());
+          if (existingBank) {
+            bankValue = existingBank.name;
           } else {
-            try {
-              const createdBank = await apiPost<Bank>("/banks", { name: normalizedBankName });
-              bankValue = createdBank.name;
-            } catch {
-              // Fallback compatível com ambientes sem endpoint/estrutura de bancos estável.
-              setBanksApiUnavailable(true);
-              setSelectedBankValue("");
-              bankValue = normalizedBankName;
-              try {
-                localStorage.setItem(BANKS_API_UNAVAILABLE_KEY, "1");
-              } catch {
-                /* ignore */
-              }
-            }
+            const createdBank = await apiPost<Bank>("/banks", { name: normalizedBankName });
+            bankValue = createdBank.name;
           }
         } else {
           if (!selectedBankValue) {
@@ -1420,6 +1703,8 @@ function App() {
       await refreshAll();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Não foi possível criar produto/tabela.");
+    } finally {
+      setProductFormLoading(false);
     }
   }
 
@@ -1437,6 +1722,7 @@ function App() {
 
   async function handleSaveCommissionTableEdit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
+    if (commissionEditLoading) return;
     if (!canEditCommissionTables || !editingCommissionTable) return;
     const bank = editingCommissionTable.bank.trim();
     const name = editingCommissionTable.name.trim();
@@ -1452,6 +1738,7 @@ function App() {
     }
     setError("");
     try {
+      setCommissionEditLoading(true);
       const response = await fetch(apiUrl(`/commission-tables/${encodeURIComponent(editingCommissionTable.id)}`), {
         method: "PATCH",
         headers: {
@@ -1474,6 +1761,8 @@ function App() {
       await refreshAll();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Erro ao editar tabela.");
+    } finally {
+      setCommissionEditLoading(false);
     }
   }
 
@@ -1484,11 +1773,13 @@ function App() {
   }
 
   async function handleDeleteCommissionTable(): Promise<void> {
+    if (commissionDeleteLoading) return;
     if (!canEditCommissionTables) return;
     const tableId = pendingDeleteCommissionTableId;
     if (!tableId) return;
     setError("");
     try {
+      setCommissionDeleteLoading(true);
       const response = await fetch(apiUrl(`/commission-tables/${encodeURIComponent(tableId)}`), {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
@@ -1502,6 +1793,84 @@ function App() {
       await refreshAll();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Erro ao excluir tabela.");
+    } finally {
+      setCommissionDeleteLoading(false);
+    }
+  }
+
+  function openUtilizeCommissionTable(target: CommissionTable): void {
+    if (!isLeader) return;
+    const baseCommission = target.baseCommissionPercent ?? target.commissionPercent;
+    setUtilizeTableDraft({
+      id: target.id,
+      bank: target.bank,
+      name: target.name,
+      deadline: target.deadline,
+      baseCommissionPercent: baseCommission,
+      commissionPercent: target.leaderRepassePercent ? String(target.leaderRepassePercent) : "",
+    });
+  }
+
+  async function handleApplyCommissionRepasse(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (repasseSaveLoading) return;
+    if (!isLeader || !utilizeTableDraft) return;
+    const repasse = Number(utilizeTableDraft.commissionPercent.replace(",", ".").trim());
+    if (!Number.isFinite(repasse) || repasse <= 0) {
+      setError("Repasse inválido.");
+      return;
+    }
+    if (repasse >= utilizeTableDraft.baseCommissionPercent) {
+      setError(`Repasse deve ser menor que ${utilizeTableDraft.baseCommissionPercent}%.`);
+      return;
+    }
+    setError("");
+    try {
+      setRepasseSaveLoading(true);
+      const response = await fetch(apiUrl(`/commission-tables/${encodeURIComponent(utilizeTableDraft.id)}/use`), {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ commissionPercent: repasse }),
+      });
+      const body = (await response.json().catch(() => ({}))) as { message?: string };
+      if (!response.ok) {
+        throw new Error(body.message ?? "Não foi possível aplicar o repasse.");
+      }
+      setPanelNotice("Repasse aplicado com sucesso.");
+      setUtilizeTableDraft(null);
+      await refreshAll();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Erro ao aplicar repasse.");
+    } finally {
+      setRepasseSaveLoading(false);
+    }
+  }
+
+  async function handleDeactivateCommissionRepasse(table: CommissionTable): Promise<void> {
+    if (repasseDeactivateTableId) return;
+    if (!isLeader) return;
+    setError("");
+    try {
+      setRepasseDeactivateTableId(table.id);
+      const response = await fetch(apiUrl(`/commission-tables/${encodeURIComponent(table.id)}/deactivate`), {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const body = (await response.json().catch(() => ({}))) as { message?: string };
+      if (!response.ok) {
+        throw new Error(body.message ?? "Não foi possível desativar a tabela.");
+      }
+      setPanelNotice("Tabela desativada para sua equipe.");
+      await refreshAll();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Erro ao desativar tabela.");
+    } finally {
+      setRepasseDeactivateTableId("");
     }
   }
 
@@ -1512,6 +1881,7 @@ function App() {
 
   async function handleSaveProductName(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
+    if (productEditLoading) return;
     if (!canEditCommissionTables || !editingProduct) return;
     const next = editingProduct.name.trim();
     if (!next) {
@@ -1520,6 +1890,7 @@ function App() {
     }
     setError("");
     try {
+      setProductEditLoading(true);
       const response = await fetch(apiUrl(`/products/${encodeURIComponent(editingProduct.id)}`), {
         method: "PATCH",
         headers: {
@@ -1536,6 +1907,8 @@ function App() {
       await refreshAll();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Erro ao editar produto.");
+    } finally {
+      setProductEditLoading(false);
     }
   }
 
@@ -1546,11 +1919,13 @@ function App() {
   }
 
   async function handleDeleteProductTables(): Promise<void> {
+    if (productDeleteTablesLoading) return;
     if (!canEditCommissionTables) return;
     const productId = pendingDeleteProductTablesId;
     if (!productId) return;
     setError("");
     try {
+      setProductDeleteTablesLoading(true);
       const response = await fetch(apiUrl(`/commission-tables/by-product/${encodeURIComponent(productId)}`), {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
@@ -1564,6 +1939,128 @@ function App() {
       await refreshAll();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Erro ao excluir tabelas do produto.");
+    } finally {
+      setProductDeleteTablesLoading(false);
+    }
+  }
+
+  async function handleCreateBankLoginRequest(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (bankLoginSubmitLoading) return;
+    setError("");
+    const productId = bankLoginProductId.trim();
+    const bankName = bankLoginBankName.trim();
+    const targetUserId = bankLoginTargetUserId.trim();
+    if (!productId || !bankName) {
+      setError("Selecione produto e banco para solicitar.");
+      return;
+    }
+    if ((isMaster || isLeader) && !targetUserId) {
+      setError("Selecione o usuário da solicitação.");
+      return;
+    }
+    try {
+      setBankLoginSubmitLoading(true);
+      await apiPost("/bank-login-requests", { productId, bankName, targetUserId: targetUserId || undefined });
+      setPanelNotice("Solicitação enviada com sucesso.");
+      await refreshAll();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Não foi possível solicitar login em banco.");
+    } finally {
+      setBankLoginSubmitLoading(false);
+    }
+  }
+
+  function handleBankLoginUserInputChange(value: string): void {
+    setBankLoginUserInput(value);
+    const exactMatch = bankLoginUserOptions.find((item) => item.label === value);
+    setBankLoginTargetUserId(exactMatch?.id ?? "");
+  }
+
+  function getModuleAlertCount(module: ModuleKey): number {
+    if (module === "bankLogins") {
+      return pendingBankLoginCount;
+    }
+    if (module === "users" || module === "products" || module === "contents") {
+      return moduleAlertCounts[module];
+    }
+    return 0;
+  }
+
+  function canRespondBankLoginRequest(request: BankLoginRequest): boolean {
+    if (!session) return false;
+    if (request.status === "RESOLVED") return false;
+    const role = session.role.toUpperCase();
+    if (role === "MASTER") return true;
+    if (role === "LIDER" && request.supervisorUserId === session.id) return true;
+    return false;
+  }
+
+  function openRespondBankLoginModal(request: BankLoginRequest): void {
+    if (!canRespondBankLoginRequest(request)) return;
+    setRespondBankLoginDraft(request);
+    setRespondLoginUser("");
+    setRespondLoginPassword("");
+  }
+
+  async function handleRespondBankLoginRequest(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (!respondBankLoginDraft || respondBankLoginLoading) return;
+    const loginUser = respondLoginUser.trim();
+    const loginPassword = respondLoginPassword.trim();
+    if (!loginUser || !loginPassword) {
+      setError("Usuário e senha são obrigatórios para responder.");
+      return;
+    }
+    try {
+      setRespondBankLoginLoading(true);
+      await apiPost(`/bank-login-requests/${encodeURIComponent(respondBankLoginDraft.id)}/respond`, { loginUser, loginPassword });
+      setRespondBankLoginDraft(null);
+      setPanelNotice("Solicitação respondida com sucesso.");
+      await refreshAll();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Não foi possível responder a solicitação.");
+    } finally {
+      setRespondBankLoginLoading(false);
+    }
+  }
+
+  async function openViewBankLoginModal(request: BankLoginRequest): Promise<void> {
+    setViewBankLoginDraft(request);
+    const isViewerEligible =
+      Boolean(session) &&
+      (request.requesterUserId === session!.id || (request.targetUserId ? request.targetUserId === session!.id : false));
+    if (request.status === "RESOLVED" && isViewerEligible && !request.requesterViewedAt) {
+      try {
+        await apiPost(`/bank-login-requests/${encodeURIComponent(request.id)}/viewed`, {});
+        await refreshAll();
+      } catch {
+        // sem bloqueio de visualização
+      }
+    }
+  }
+
+  async function copyBankLoginValue(kind: "user" | "password", value: string): Promise<void> {
+    const normalized = value.trim();
+    if (!normalized) return;
+    try {
+      await navigator.clipboard.writeText(normalized);
+      setCopiedBankLoginField(kind);
+      window.setTimeout(() => setCopiedBankLoginField(""), 1400);
+    } catch {
+      setError("Não foi possível copiar o valor.");
+    }
+  }
+
+  async function copyLoggedUserEmail(): Promise<void> {
+    const email = (session?.email ?? "").trim();
+    if (!email) return;
+    try {
+      await navigator.clipboard.writeText(email);
+      setLoggedUserEmailCopied(true);
+      window.setTimeout(() => setLoggedUserEmailCopied(false), 1200);
+    } catch {
+      setError("Não foi possível copiar o e-mail.");
     }
   }
 
@@ -1620,7 +2117,12 @@ function App() {
 
   async function handleCreateFolder(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
+    if (folderCreateLoading) return;
     setError("");
+    if (!canEditContents) {
+      setError("Sem permissão para criar pastas.");
+      return;
+    }
     const normalizedName = newFolderName.trim();
     if (!normalizedName) {
       const msg = "Nome da pasta é obrigatório.";
@@ -1633,33 +2135,35 @@ function App() {
       setError(msg);
       return;
     }
-    if (canEditContents) {
-      try {
-        await apiPost("/contents/folder", { path: nextPath });
-      } catch (requestError) {
-        // Fallback legado: mantém pasta local se endpoint não estiver disponível no ambiente.
-        if (requestError instanceof Error && /404|Cannot POST/i.test(requestError.message)) {
-          if (!manualFolders.includes(nextPath) && !folderPaths.includes(nextPath)) {
-            setManualFolders((prev) => [...prev, nextPath]);
-          }
-          setCurrentFolderPath(currentFolderPath);
-          setNewFolderName("");
-          setIsFolderModalOpen(false);
-          return;
+    setFolderCreateLoading(true);
+    try {
+      await apiPost("/contents/folder", { path: nextPath });
+    } catch (requestError) {
+      // Fallback legado: mantém pasta local só quando endpoint não existe.
+      if (requestError instanceof Error && /404|Cannot POST/i.test(requestError.message)) {
+        if (!manualFolders.includes(nextPath) && !folderPaths.includes(nextPath)) {
+          setManualFolders((prev) => [...prev, nextPath]);
         }
-        setError(requestError instanceof Error ? requestError.message : "Não foi possível criar a pasta.");
+        setCurrentFolderPath(currentFolderPath);
+        setNewFolderName("");
+        setIsFolderModalOpen(false);
+        setFolderCreateLoading(false);
         return;
       }
+      setError(requestError instanceof Error ? requestError.message : "Não foi possível criar a pasta.");
+      setFolderCreateLoading(false);
+      return;
+    }
+    try {
       await refreshAll();
+      // Na criação pela tela raiz, manter na listagem de pastas.
+      // Dentro de uma pasta, permanece no contexto atual.
+      setCurrentFolderPath(currentFolderPath);
+      setNewFolderName("");
+      setIsFolderModalOpen(false);
+    } finally {
+      setFolderCreateLoading(false);
     }
-    if (!manualFolders.includes(nextPath) && !folderPaths.includes(nextPath)) {
-      setManualFolders((prev) => [...prev, nextPath]);
-    }
-    // Na criação pela tela raiz, manter na listagem de pastas.
-    // Dentro de uma pasta, permanece no contexto atual.
-    setCurrentFolderPath(currentFolderPath);
-    setNewFolderName("");
-    setIsFolderModalOpen(false);
   }
 
   async function openContentFileInNewTab(content: Content): Promise<void> {
@@ -1693,6 +2197,7 @@ function App() {
 
   async function handleConfirmFileUpload(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
+    if (fileUploadLoading) return;
     if (!pendingUploadFile || !pendingUploadType) return;
     const safeName = uploadDisplayName.trim();
     if (!safeName) {
@@ -1700,11 +2205,16 @@ function App() {
       setError(msg);
       return;
     }
-    await uploadContentFile(pendingUploadFile, pendingUploadType, safeName);
-    setIsFileModalOpen(false);
-    setPendingUploadFile(null);
-    setPendingUploadType(null);
-    setUploadDisplayName("");
+    setFileUploadLoading(true);
+    try {
+      await uploadContentFile(pendingUploadFile, pendingUploadType, safeName);
+      setIsFileModalOpen(false);
+      setPendingUploadFile(null);
+      setPendingUploadType(null);
+      setUploadDisplayName("");
+    } finally {
+      setFileUploadLoading(false);
+    }
   }
 
   function requestDeleteFolder(folderPath: string): void {
@@ -1719,10 +2229,12 @@ function App() {
   }
 
   async function handleConfirmDeleteContent(): Promise<void> {
+    if (contentDeleteLoading) return;
     const id = pendingDeleteContentId;
     if (!id) return;
     if (!canEditContents) return;
     try {
+      setContentDeleteLoading(true);
       setError("");
       const response = await fetch(apiUrl(`/contents/${encodeURIComponent(id)}`), {
         method: "DELETE",
@@ -1756,14 +2268,18 @@ function App() {
       await refreshAll();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Erro ao excluir arquivo.");
+    } finally {
+      setContentDeleteLoading(false);
     }
   }
 
   async function handleConfirmDeleteFolder(): Promise<void> {
+    if (folderDeleteLoading) return;
     const folderPath = pendingDeleteFolderPath;
     if (!folderPath) return;
     if (!canEditContents) return;
     try {
+      setFolderDeleteLoading(true);
       setError("");
       const response = await fetch(`${apiUrl("/contents/folder")}?path=${encodeURIComponent(folderPath)}`, {
         method: "DELETE",
@@ -1786,6 +2302,8 @@ function App() {
       await refreshAll();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Erro ao excluir pasta.");
+    } finally {
+      setFolderDeleteLoading(false);
     }
   }
 
@@ -1803,9 +2321,24 @@ function App() {
     return (
       <main className="auth-layout">
         <section className="auth-card">
-          {activeLogoUrl ? (
-            <img className="logo logo--auth" src={activeLogoUrl} alt="" width={220} height={64} />
-          ) : null}
+          {logoUnavailable ? (
+            <strong className="logo logo--auth">Credilix</strong>
+          ) : (
+            <img
+              className="logo logo--auth"
+              src={visibleLogoUrl}
+              alt="Credilix"
+              width={220}
+              height={64}
+              onError={(event) => {
+                if (event.currentTarget.src.includes(FALLBACK_LOGO_URL)) {
+                  setLogoUnavailable(true);
+                  return;
+                }
+                setLogoLoadFailed(true);
+              }}
+            />
+          )}
           <p className="muted">Painel de conteúdos, produtos e comissões.</p>
           <form onSubmit={handleLogin} className="form-grid">
             <label>
@@ -1906,9 +2439,24 @@ function App() {
               <PanelLeftClose {...RAIL_ICON_PROPS} aria-hidden />
             )}
           </button>
-          {activeLogoUrl ? (
-            <img className="logo logo--nav" src={activeLogoUrl} alt="" width={160} height={48} />
-          ) : null}
+          {logoUnavailable ? (
+            <strong className="logo logo--nav">Credilix</strong>
+          ) : (
+            <img
+              className="logo logo--nav"
+              src={visibleLogoUrl}
+              alt="Credilix"
+              width={160}
+              height={48}
+              onError={(event) => {
+                if (event.currentTarget.src.includes(FALLBACK_LOGO_URL)) {
+                  setLogoUnavailable(true);
+                  return;
+                }
+                setLogoLoadFailed(true);
+              }}
+            />
+          )}
           <button type="button" className="shell-nav__close" aria-label="Fechar" onClick={() => setNavOpen(false)}>
             ×
           </button>
@@ -1928,6 +2476,9 @@ function App() {
                   <RailModuleIcon module={item.key} />
                 </span>
                 <span className="shell-rail-item__label">{item.label}</span>
+                {getModuleAlertCount(item.key) > 0 ? (
+                  <span className="shell-rail-item__badge">{getModuleAlertCount(item.key)}</span>
+                ) : null}
               </button>
             ))}
           </div>
@@ -1948,7 +2499,16 @@ function App() {
                     <strong>Nome:</strong> {session?.fullName || "—"}
                   </p>
                   <p>
-                    <strong>E-mail:</strong> {session?.email || "—"}
+                    <strong>E-mail:</strong>{" "}
+                    <button
+                      type="button"
+                      className="logged-user-email-copy"
+                      onClick={() => void copyLoggedUserEmail()}
+                      title="Clique para copiar e-mail"
+                    >
+                      <span className="logged-user-email-copy__text">{session?.email || "—"}</span>
+                    </button>
+                    {loggedUserEmailCopied ? <small className="logged-user-email-copy__feedback">copiado</small> : null}
                   </p>
                   <p>
                     <strong>CPF:</strong> {formatCpfForDisplay(session?.profile?.cpf)}
@@ -2005,6 +2565,28 @@ function App() {
             <span />
           </button>
           <h1 className="shell-header__title">{MODULE_TITLE[activeModule]}</h1>
+          <div className="shell-header__alerts" aria-label="Alertas dos módulos">
+            {navItems.map((item) => (
+              (() => {
+                const alertCount = getModuleAlertCount(item.key);
+                const shouldPulse = bellPulse && alertCount > 0;
+                return (
+              <button
+                key={`header-alert-${item.key}`}
+                type="button"
+                className={`shell-header__bell${shouldPulse ? " is-pulsing" : ""}`}
+                aria-label={`${item.label}: ${alertCount} alerta(s)`}
+                onClick={() => setActiveModule(item.key)}
+              >
+                <RailModuleIcon module={item.key} />
+                {alertCount > 0 ? (
+                  <span className="shell-header__bell-badge">{alertCount}</span>
+                ) : null}
+              </button>
+                );
+              })()
+            ))}
+          </div>
         </header>
 
         <main className="shell-body">
@@ -2102,7 +2684,21 @@ function App() {
                       <span>Editar/Criar conteúdos</span>
                     </label>
                   </fieldset>
-                  <button type="submit">Criar usuário</button>
+                  <button type="submit" disabled={inviteLoading} className={inviteLoading ? "is-loading" : undefined}>
+                    {inviteLoading ? (
+                      <span className="submit-loading-content">
+                        <span className="submit-spinner" aria-hidden="true" />
+                        Enviando convite...
+                      </span>
+                    ) : (
+                      "Criar usuário"
+                    )}
+                  </button>
+                  {inviteLoading ? (
+                    <p className="invite-submit-status" role="status" aria-live="polite">
+                      Processando cadastro e envio do convite...
+                    </p>
+                  ) : null}
                 </form>
               ) : null}
 
@@ -2798,7 +3394,6 @@ function App() {
                     <span className="field-head">
                       <span>Banco</span>
                       {isTypingNewBank ? (
-                        banksApiUnavailable ? null : (
                         <button
                           type="button"
                           className="field-toggle"
@@ -2809,10 +3404,9 @@ function App() {
                         >
                           Usar existente
                         </button>
-                        )
                       ) : null}
                     </span>
-                    {isTypingNewBank || banksApiUnavailable ? (
+                    {isTypingNewBank ? (
                       <input
                         value={bankName}
                         onChange={(e) => setBankName(e.target.value)}
@@ -2871,8 +3465,15 @@ function App() {
                     />
                   </label>
                 </div>
-                <button type="submit">
-                  Incluir
+                <button type="submit" disabled={productFormLoading} className={productFormLoading ? "is-loading" : undefined}>
+                  {productFormLoading ? (
+                    <span className="submit-loading-content">
+                      <span className="submit-spinner" aria-hidden="true" />
+                      Processando...
+                    </span>
+                  ) : (
+                    "Incluir"
+                  )}
                 </button>
               </form>
             ) : null}
@@ -2941,7 +3542,7 @@ function App() {
                           <th>Prazo</th>
                           <th>% Comissão</th>
                           <th>Obs.</th>
-                          {canEditCommissionTables ? <th>Ações</th> : null}
+                          {canEditCommissionTables || isLeader ? <th>Ações</th> : null}
                         </tr>
                       </thead>
                       <tbody>
@@ -2995,27 +3596,57 @@ function App() {
                                 "—"
                               )}
                             </td>
-                            {canEditCommissionTables ? (
+                            {canEditCommissionTables || isLeader ? (
                               <td>
                                 <div className="table-actions-inline">
-                                  <button
-                                    type="button"
-                                    className="table-action-btn table-action-btn--edit"
-                                    title="Editar tabela"
-                                    aria-label={`Editar tabela ${table.name}`}
-                                    onClick={() => void handleEditCommissionTable(table)}
-                                  >
-                                    <Pencil size={14} aria-hidden />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="table-action-btn table-action-btn--delete"
-                                    title="Excluir tabela"
-                                    aria-label={`Excluir tabela ${table.name}`}
-                                    onClick={() => requestDeleteCommissionTable(table)}
-                                  >
-                                    <Trash2 size={14} aria-hidden />
-                                  </button>
+                                  {canEditCommissionTables ? (
+                                    <>
+                                      <button
+                                        type="button"
+                                        className="table-action-btn table-action-btn--edit"
+                                        title="Editar tabela"
+                                        aria-label={`Editar tabela ${table.name}`}
+                                        onClick={() => void handleEditCommissionTable(table)}
+                                      >
+                                        <Pencil size={14} aria-hidden />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="table-action-btn table-action-btn--delete"
+                                        title="Excluir tabela"
+                                        aria-label={`Excluir tabela ${table.name}`}
+                                        disabled={commissionDeleteLoading}
+                                        onClick={() => requestDeleteCommissionTable(table)}
+                                      >
+                                        <Trash2 size={14} aria-hidden />
+                                      </button>
+                                    </>
+                                  ) : null}
+                                  {isLeader ? (
+                                    table.leaderRepasseActive ? (
+                                      <button
+                                        type="button"
+                                        className="table-action-btn table-action-btn--deactivate"
+                                        title="Desativar tabela para sua equipe"
+                                        aria-label={`Desativar tabela ${table.name}`}
+                                        disabled={repasseDeactivateTableId === table.id}
+                                        onClick={() => void handleDeactivateCommissionRepasse(table)}
+                                      >
+                                        {repasseDeactivateTableId === table.id ? "Processando..." : "Desativar"}
+                                      </button>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        className="table-action-btn table-action-btn--utilize"
+                                        title="Utilizar tabela"
+                                        aria-label={`Utilizar tabela ${table.name}`}
+                                        disabled={Boolean(repasseDeactivateTableId)}
+                                        onClick={() => openUtilizeCommissionTable(table)}
+                                      >
+                                        Utilizar
+                                      </button>
+                                    )
+                                  ) : null}
                                 </div>
                               </td>
                             ) : null}
@@ -3025,6 +3656,157 @@ function App() {
                     </table>
                   </article>
                 ))
+              )}
+            </article>
+          </div>
+        ) : null}
+
+        {activeModule === "bankLogins" ? (
+          <div className="module-grid">
+            <form className="card form-grid" onSubmit={handleCreateBankLoginRequest}>
+              <h3>Solicitar Login Banco</h3>
+              {isMaster || isLeader ? (
+                <>
+                  <label>
+                    Usuário da solicitação
+                    <input
+                      type="text"
+                      value={bankLoginUserInput}
+                      onChange={(e) => handleBankLoginUserInputChange(e.target.value)}
+                      placeholder="Nome ou e-mail"
+                      list="bank-login-users"
+                      required
+                    />
+                  </label>
+                  <datalist id="bank-login-users">
+                    {bankLoginUserOptions.map((item) => (
+                      <option key={item.id} value={item.label} />
+                    ))}
+                  </datalist>
+                </>
+              ) : null}
+              <label>
+                Produto
+                <select value={bankLoginProductId} onChange={(e) => setBankLoginProductId(e.target.value)} required>
+                  <option value="">Selecione</option>
+                  {bankLoginProductOptions.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Banco
+                <select value={bankLoginBankName} onChange={(e) => setBankLoginBankName(e.target.value)} required>
+                  <option value="">Selecione</option>
+                  {filterBankOptions.map((bank) => (
+                    <option key={bank} value={bank}>
+                      {bank}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button type="submit" className={`btn-primary ${bankLoginSubmitLoading ? "is-loading" : ""}`} disabled={bankLoginSubmitLoading}>
+                {bankLoginSubmitLoading ? (
+                  <span className="submit-loading-content">
+                    <span className="submit-spinner" aria-hidden />
+                    Processando...
+                  </span>
+                ) : (
+                  "Solicitar"
+                )}
+              </button>
+            </form>
+
+            <article className="card">
+              <h3>Solicitações</h3>
+              {bankLoginRequests.length === 0 ? (
+                <p className="muted">Nenhuma solicitação registrada.</p>
+              ) : (
+                <>
+                  <h4>Usuários Solicitados</h4>
+                  {bankLoginRequestedItems.length === 0 ? (
+                    <p className="muted">Nenhuma solicitação pendente.</p>
+                  ) : (
+                    <div className="table-wrap">
+                      <table className="table">
+                        <thead>
+                          <tr>
+                            <th>Usuário</th>
+                            <th>Produto</th>
+                            <th>Banco</th>
+                            <th>Status</th>
+                            <th>Data</th>
+                            <th>Ações</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {bankLoginRequestedItems.map((request) => (
+                            <tr key={request.id}>
+                              <td>{users.find((item) => item.id === (request.targetUserId || request.requesterUserId))?.fullName || "—"}</td>
+                              <td>{products.find((item) => item.id === request.productId)?.name || "—"}</td>
+                              <td>{request.bankName}</td>
+                              <td>Pendente</td>
+                              <td>{new Date(request.createdAt).toLocaleString("pt-BR")}</td>
+                              <td>
+                                {canRespondBankLoginRequest(request) ? (
+                                  <button
+                                    type="button"
+                                    className="table-action-btn table-action-btn--utilize"
+                                    onClick={() => openRespondBankLoginModal(request)}
+                                  >
+                                    Responder
+                                  </button>
+                                ) : (
+                                  "—"
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  <h4>Usuários Criados</h4>
+                  {bankLoginCreatedItems.length === 0 ? (
+                    <p className="muted">Nenhum login respondido.</p>
+                  ) : (
+                    <div className="table-wrap">
+                      <table className="table">
+                        <thead>
+                          <tr>
+                            <th>Usuário</th>
+                            <th>Produto</th>
+                            <th>Banco</th>
+                            <th>Respondido em</th>
+                            <th>Ações</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {bankLoginCreatedItems.map((request) => (
+                            <tr key={request.id}>
+                              <td>{users.find((item) => item.id === (request.targetUserId || request.requesterUserId))?.fullName || "—"}</td>
+                              <td>{products.find((item) => item.id === request.productId)?.name || "—"}</td>
+                              <td>{request.bankName}</td>
+                              <td>{new Date(request.resolvedAt || request.updatedAt || request.createdAt).toLocaleString("pt-BR")}</td>
+                              <td>
+                                <button
+                                  type="button"
+                                  className="table-action-btn table-action-btn--deactivate"
+                                  onClick={() => void openViewBankLoginModal(request)}
+                                >
+                                  Ver Login
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </>
               )}
             </article>
           </div>
@@ -3281,7 +4063,16 @@ function App() {
                       />
                     </label>
                     <div className="contents-actions">
-                      <button type="submit">Salvar</button>
+                      <button type="submit" disabled={folderCreateLoading} className={folderCreateLoading ? "is-loading" : undefined}>
+                        {folderCreateLoading ? (
+                          <span className="submit-loading-content">
+                            <span className="submit-spinner" aria-hidden="true" />
+                            Salvando...
+                          </span>
+                        ) : (
+                          "Salvar"
+                        )}
+                      </button>
                     </div>
                   </form>
                 </div>
@@ -3305,8 +4096,8 @@ function App() {
                       <button type="button" className="btn-ghost" onClick={() => setIsFileModalOpen(false)}>
                         Cancelar
                       </button>
-                      <button type="submit" className="content-modal__confirm">
-                        Confirmar
+                      <button type="submit" className="content-modal__confirm" disabled={fileUploadLoading}>
+                        {fileUploadLoading ? "Processando..." : "Confirmar"}
                       </button>
                     </div>
                   </form>
@@ -3337,8 +4128,13 @@ function App() {
                     <button type="button" className="btn-ghost" onClick={() => setPendingDeleteFolderPath("")}>
                       Cancelar
                     </button>
-                    <button type="button" className="content-modal__danger" onClick={() => void handleConfirmDeleteFolder()}>
-                      Excluir pasta
+                    <button
+                      type="button"
+                      className="content-modal__danger"
+                      disabled={folderDeleteLoading}
+                      onClick={() => void handleConfirmDeleteFolder()}
+                    >
+                      {folderDeleteLoading ? "Processando..." : "Excluir pasta"}
                     </button>
                   </div>
                 </div>
@@ -3385,8 +4181,13 @@ function App() {
                     >
                       Cancelar
                     </button>
-                    <button type="button" className="content-modal__danger" onClick={() => void handleConfirmDeleteContent()}>
-                      Excluir arquivo
+                    <button
+                      type="button"
+                      className="content-modal__danger"
+                      disabled={contentDeleteLoading}
+                      onClick={() => void handleConfirmDeleteContent()}
+                    >
+                      {contentDeleteLoading ? "Processando..." : "Excluir arquivo"}
                     </button>
                   </div>
                 </div>
@@ -3395,6 +4196,131 @@ function App() {
             </section>
           </div>
         ) : null}
+        {respondBankLoginDraft ? (
+          <div className="content-modal-backdrop" role="presentation" onClick={() => setRespondBankLoginDraft(null)}>
+            <div className="content-modal" role="dialog" aria-modal onClick={(e) => e.stopPropagation()}>
+              <button
+                type="button"
+                className="content-modal__close"
+                aria-label="Fechar modal"
+                onClick={() => setRespondBankLoginDraft(null)}
+              >
+                ×
+              </button>
+              <h3>Responder solicitação</h3>
+              <form className="form-grid" onSubmit={(e) => void handleRespondBankLoginRequest(e)}>
+                <label>
+                  Nome do Banco
+                  <input value={respondBankLoginDraft.bankName} disabled />
+                </label>
+                <label>
+                  Produto
+                  <input value={products.find((item) => item.id === respondBankLoginDraft.productId)?.name || "—"} disabled />
+                </label>
+                <label>
+                  Usuário
+                  <input value={respondLoginUser} onChange={(e) => setRespondLoginUser(e.target.value)} required />
+                </label>
+                <label>
+                  Senha
+                  <input value={respondLoginPassword} onChange={(e) => setRespondLoginPassword(e.target.value)} required />
+                </label>
+                <div className="contents-actions">
+                  <button type="button" className="btn-ghost" onClick={() => setRespondBankLoginDraft(null)} disabled={respondBankLoginLoading}>
+                    Cancelar
+                  </button>
+                  <button type="submit" className="content-modal__confirm" disabled={respondBankLoginLoading}>
+                    {respondBankLoginLoading ? "Processando..." : "Salvar"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        ) : null}
+
+        {viewBankLoginDraft ? (
+          <div className="content-modal-backdrop" role="presentation" onClick={() => setViewBankLoginDraft(null)}>
+            <div className="content-modal" role="dialog" aria-modal onClick={(e) => e.stopPropagation()}>
+              <button
+                type="button"
+                className="content-modal__close"
+                aria-label="Fechar modal"
+                onClick={() => setViewBankLoginDraft(null)}
+              >
+                ×
+              </button>
+              <h3>Visualizar login</h3>
+              <form className="form-grid">
+                <label>
+                  Nome do Usuário
+                  <input
+                    value={
+                      users.find((item) => item.id === (viewBankLoginDraft.targetUserId || viewBankLoginDraft.requesterUserId))
+                        ?.fullName || "—"
+                    }
+                    disabled
+                  />
+                </label>
+                <label>
+                  E-mail do Usuário
+                  <input
+                    value={
+                      users.find((item) => item.id === (viewBankLoginDraft.targetUserId || viewBankLoginDraft.requesterUserId))
+                        ?.email || "—"
+                    }
+                    disabled
+                  />
+                </label>
+                <label>
+                  Nome do Banco
+                  <input value={viewBankLoginDraft.bankName} disabled />
+                </label>
+                <label>
+                  Produto
+                  <input value={products.find((item) => item.id === viewBankLoginDraft.productId)?.name || "—"} disabled />
+                </label>
+                <label>
+                  Usuário
+                  <div className="readonly-copy-field">
+                    <input value={viewBankLoginDraft.loginUser || "—"} disabled />
+                    <button
+                      type="button"
+                      className="readonly-copy-field__btn"
+                      aria-label="Copiar usuário"
+                      title="Copiar usuário"
+                      onClick={() => void copyBankLoginValue("user", viewBankLoginDraft.loginUser || "")}
+                    >
+                      <i className="bi bi-copy" aria-hidden />
+                    </button>
+                  </div>
+                  {copiedBankLoginField === "user" ? <small className="muted">Usuário copiado.</small> : null}
+                </label>
+                <label>
+                  Senha
+                  <div className="readonly-copy-field">
+                    <input value={viewBankLoginDraft.loginPassword || "—"} disabled />
+                    <button
+                      type="button"
+                      className="readonly-copy-field__btn"
+                      aria-label="Copiar senha"
+                      title="Copiar senha"
+                      onClick={() => void copyBankLoginValue("password", viewBankLoginDraft.loginPassword || "")}
+                    >
+                      <i className="bi bi-copy" aria-hidden />
+                    </button>
+                  </div>
+                  {copiedBankLoginField === "password" ? <small className="muted">Senha copiada.</small> : null}
+                </label>
+                <div className="contents-actions">
+                  <button type="button" className="content-modal__confirm" onClick={() => setViewBankLoginDraft(null)}>
+                    Fechar
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        ) : null}
+
         {editingCommissionTable ? (
           <div className="content-modal-backdrop" role="presentation" onClick={() => setEditingCommissionTable(null)}>
             <div className="content-modal" role="dialog" aria-modal onClick={(e) => e.stopPropagation()}>
@@ -3458,8 +4384,63 @@ function App() {
                   <button type="button" className="btn-ghost" onClick={() => setEditingCommissionTable(null)}>
                     Cancelar
                   </button>
-                  <button type="submit" className="content-modal__confirm">
-                    Salvar
+                  <button type="submit" className="content-modal__confirm" disabled={commissionEditLoading}>
+                    {commissionEditLoading ? "Processando..." : "Salvar"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        ) : null}
+        {utilizeTableDraft ? (
+          <div className="content-modal-backdrop" role="presentation" onClick={() => setUtilizeTableDraft(null)}>
+            <div className="content-modal" role="dialog" aria-modal onClick={(e) => e.stopPropagation()}>
+              <button
+                type="button"
+                className="content-modal__close"
+                aria-label="Fechar utilização da tabela"
+                onClick={() => setUtilizeTableDraft(null)}
+              >
+                <X size={16} aria-hidden />
+              </button>
+              <h3>Utilizar tabela</h3>
+              <form className="form-grid" onSubmit={(e) => void handleApplyCommissionRepasse(e)}>
+                <label>
+                  Banco
+                  <input value={utilizeTableDraft.bank} disabled />
+                </label>
+                <label>
+                  Nome da Tabela
+                  <input value={utilizeTableDraft.name} disabled />
+                </label>
+                <label>
+                  Prazo
+                  <input value={utilizeTableDraft.deadline} disabled />
+                </label>
+                <label>
+                  Comissão MASTER %
+                  <input value={String(utilizeTableDraft.baseCommissionPercent)} disabled />
+                </label>
+                <label>
+                  Seu repasse %
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={utilizeTableDraft.commissionPercent}
+                    onChange={(e) =>
+                      setUtilizeTableDraft((prev) => (prev ? { ...prev, commissionPercent: e.target.value } : prev))
+                    }
+                    placeholder="Deve ser menor que a comissão master"
+                    required
+                    autoFocus
+                  />
+                </label>
+                <div className="contents-actions">
+                  <button type="button" className="btn-ghost" onClick={() => setUtilizeTableDraft(null)}>
+                    Cancelar
+                  </button>
+                  <button type="submit" className="content-modal__confirm" disabled={repasseSaveLoading}>
+                    {repasseSaveLoading ? "Processando..." : "Salvar repasse"}
                   </button>
                 </div>
               </form>
@@ -3492,8 +4473,8 @@ function App() {
                   <button type="button" className="btn-ghost" onClick={() => setEditingProduct(null)}>
                     Cancelar
                   </button>
-                  <button type="submit" className="content-modal__confirm">
-                    Salvar
+                  <button type="submit" className="content-modal__confirm" disabled={productEditLoading}>
+                    {productEditLoading ? "Processando..." : "Salvar"}
                   </button>
                 </div>
               </form>
@@ -3536,8 +4517,13 @@ function App() {
                 >
                   Cancelar
                 </button>
-                <button type="button" className="content-modal__danger" onClick={() => void handleDeleteCommissionTable()}>
-                  Excluir tabela
+                <button
+                  type="button"
+                  className="content-modal__danger"
+                  disabled={commissionDeleteLoading}
+                  onClick={() => void handleDeleteCommissionTable()}
+                >
+                  {commissionDeleteLoading ? "Processando..." : "Excluir tabela"}
                 </button>
               </div>
             </div>
@@ -3579,8 +4565,13 @@ function App() {
                 >
                   Cancelar
                 </button>
-                <button type="button" className="content-modal__danger" onClick={() => void handleDeleteProductTables()}>
-                  Excluir tabelas
+                <button
+                  type="button"
+                  className="content-modal__danger"
+                  disabled={productDeleteTablesLoading}
+                  onClick={() => void handleDeleteProductTables()}
+                >
+                  {productDeleteTablesLoading ? "Processando..." : "Excluir tabelas"}
                 </button>
               </div>
             </div>

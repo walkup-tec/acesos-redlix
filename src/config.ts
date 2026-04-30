@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 dotenv.config({ override: true });
 
 const appBaseUrl = process.env.APP_BASE_URL ?? "http://localhost:5050";
+const startedAtIso = new Date().toISOString();
 
 function parseMailMode(raw: string | undefined): "off" | "log" | "smtp" {
   if (raw === "smtp" || raw === "log" || raw === "off") {
@@ -33,6 +34,13 @@ export const config = {
   bootstrapTenantName: process.env.BOOTSTRAP_TENANT_NAME ?? "Credilix",
   bootstrapMasterEmail: process.env.BOOTSTRAP_MASTER_EMAIL ?? "master@credilix.local",
   bootstrapMasterPassword: process.env.BOOTSTRAP_MASTER_PASSWORD ?? "Master@123",
+  build: {
+    label: process.env.APP_BUILD_LABEL ?? "local-dev",
+    commit: process.env.APP_BUILD_COMMIT ?? "unknown",
+    deployedAt: process.env.APP_BUILD_DEPLOYED_AT ?? "unknown",
+    appVersion: process.env.npm_package_version ?? "unknown",
+    startedAt: startedAtIso,
+  },
   branding: {
     name: "Credilix",
     logoUrl: process.env.BRANDING_LOGO_URL ?? `${appBaseUrl}/branding-assets/logo-credilix-dark.png`,

@@ -95,3 +95,8 @@ export function requireAuth(req: RequestWithAuth, res: Response, next: NextFunct
     res.status(401).json({ message: "Token inválido." });
   }
 }
+
+export function authContextFromToken(token: string): AuthContext {
+  const decoded = jwt.verify(token, config.jwtSecret);
+  return normalizeAuthContext(decoded);
+}

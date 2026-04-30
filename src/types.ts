@@ -7,6 +7,8 @@ export type ContentType = "PDF" | "PNG" | "JPEG" | "IMAGE" | "COMMISSION_TABLE" 
 export interface TenantUser {
   id: string;
   tenantId: string;
+  createdByUserId?: string;
+  leaderUserId?: string;
   systemCode?: string;
   fullName: string;
   email: string;
@@ -71,6 +73,10 @@ export interface CommissionTable {
   name: string;
   deadline: string;
   commissionPercent: number;
+  baseCommissionPercent?: number;
+  leaderRepassePercent?: number;
+  leaderRepasseDefined?: boolean;
+  leaderRepasseActive?: boolean;
   observation?: string;
   createdBy: string;
   createdAt: string;
@@ -94,6 +100,24 @@ export interface DatabaseState {
   banks: Bank[];
   commissionTables: CommissionTable[];
   contents: ContentItem[];
+}
+
+export interface BankLoginRequest {
+  id: string;
+  tenantId: string;
+  requesterUserId: string;
+  supervisorUserId?: string;
+  targetUserId?: string;
+  productId: string;
+  bankName: string;
+  status: "PENDING" | "RESOLVED";
+  loginUser?: string;
+  loginPassword?: string;
+  resolvedByUserId?: string;
+  resolvedAt?: string;
+  requesterViewedAt?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Tenant {

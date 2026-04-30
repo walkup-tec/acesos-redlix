@@ -3,14 +3,17 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import multer from "multer";
 import { z, ZodError } from "zod";
-import { RequestWithAuth, requireAuth } from "./auth";
+import { RequestWithAuth, authContextFromToken, requireAuth } from "./auth";
 import { config } from "./config";
 import {
   approveUser,
   blockUser,
   completeRegistration,
+  applyLeaderCommissionRepasse,
+  deactivateLeaderCommissionRepasse,
   createCommissionTable,
   createBank,
+  createBankLoginRequest,
   createContent,
   createContentFolder,
   deleteCommissionTable,
@@ -23,8 +26,12 @@ import {
   getInviteRegistrationContext,
   listCommissionTables,
   listBanks,
+  listBankLoginRequests,
   listContents,
   listProducts,
+  getPendingBankLoginRequestCount,
+  markBankLoginRequestViewed,
+  respondBankLoginRequest,
   listUsers,
   login,
   resetPassword,
@@ -41,6 +48,7 @@ import {
   getContentFileForDownload,
   errorMessageFromUnknown,
 } from "./services";
+import { addRealtimeClient, publishRealtimeEvent, removeRealtimeClient } from "./realtime";
 
 const uploadDir = path.resolve(process.cwd(), "uploads");
 const upload = multer({ dest: uploadDir });
@@ -55,12 +63,54 @@ function validationErrorMessage(error: ZodError): string {
 
 export const router = express.Router();
 
+router.get("/events", (req, res) => {
+  try {
+    const token = String(req.query.token ?? "");
+    if (!token) {
+      res.status(401).json({ message: "Token ausente." });
+      return;
+    }
+    const auth = authContextFromToken(token);
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders?.();
+
+    const clientId = `${auth.tenantId}:${auth.userId}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+    const send = (event: { type: string; tenantId: string; userId?: string }) => {
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+    };
+    addRealtimeClient({ id: clientId, tenantId: auth.tenantId, userId: auth.userId, send });
+    send({ type: "connected", tenantId: auth.tenantId, userId: auth.userId });
+
+    const heartbeat = setInterval(() => {
+      res.write(`: ping\n\n`);
+    }, 15000);
+
+    req.on("close", () => {
+      clearInterval(heartbeat);
+      removeRealtimeClient(clientId);
+      res.end();
+    });
+  } catch {
+    res.status(401).json({ message: "Token inválido." });
+  }
+});
+
 router.get("/health", (_req, res) => {
   res.json({
     ok: true,
     service: "credilix-acessos",
     /** Se não aparecer, não é este backend (ou está desatualizado). */
     features: { inviteEmailBeforeDb: true },
+    build: config.build,
+  });
+});
+
+router.get("/build", (_req, res) => {
+  res.json({
+    service: "credilix-acessos",
+    build: config.build,
   });
 });
 
@@ -242,6 +292,7 @@ router.post(
         identityBackPath,
         addressProofPath,
       });
+      publishRealtimeEvent({ type: "users-updated", tenantId: user.tenantId });
       res.json(toPublicTenantUser(user));
     } catch (error) {
       res.status(400).json({ message: error instanceof Error ? error.message : "Erro no cadastro." });
@@ -280,6 +331,7 @@ router.post("/users/invite", requireAuth, async (req: RequestWithAuth, res) => {
       return;
     }
     const result = await inviteUser(req.auth!, parsedResult.data);
+    publishRealtimeEvent({ type: "users-updated", tenantId: req.auth!.tenantId });
     res.status(201).json({
       user: toPublicTenantUser(result.user),
       inviteLink: result.inviteLink,
@@ -296,6 +348,7 @@ router.post("/users/:id/approve", requireAuth, async (req: RequestWithAuth, res)
   try {
     const userId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const result = await approveUser(req.auth!, userId);
+    publishRealtimeEvent({ type: "users-updated", tenantId: req.auth!.tenantId });
     const body: Record<string, unknown> = {
       message: "Usuário aprovado. Um e-mail foi enviado com o código de primeiro acesso.",
       user: toPublicTenantUser(result.user),
@@ -315,6 +368,7 @@ router.patch("/users/:id/block", requireAuth, async (req: RequestWithAuth, res) 
     const schema = z.object({ blocked: z.boolean() });
     const parsed = schema.parse(req.body);
     const user = await blockUser(req.auth!, userId, parsed.blocked);
+    publishRealtimeEvent({ type: "users-updated", tenantId: req.auth!.tenantId });
     res.json(toPublicTenantUser(user));
   } catch (error) {
     res.status(400).json({ message: error instanceof Error ? error.message : "Erro ao alterar bloqueio." });
@@ -330,6 +384,7 @@ router.patch("/users/:id/status", requireAuth, async (req: RequestWithAuth, res)
     });
     const parsed = schema.parse(req.body);
     const user = await setUserLifecycleStatus(req.auth!, userId, parsed.status, parsed.reason);
+    publishRealtimeEvent({ type: "users-updated", tenantId: req.auth!.tenantId });
     res.json(toPublicTenantUser(user));
   } catch (error) {
     res.status(400).json({ message: error instanceof Error ? error.message : "Erro ao alterar status do usuário." });
@@ -340,6 +395,7 @@ router.post("/users/:id/reset-access", requireAuth, async (req: RequestWithAuth,
   try {
     const userId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const user = await resetUserAccessByManager(req.auth!, userId);
+    publishRealtimeEvent({ type: "users-updated", tenantId: req.auth!.tenantId });
     res.json({
       message: "Reset enviado por e-mail com senha temporária.",
       user: toPublicTenantUser(user),
@@ -377,6 +433,7 @@ router.put("/users/:id", requireAuth, async (req: RequestWithAuth, res) => {
     });
     const parsed = schema.parse(req.body);
     const user = await updateUserProfileByManager(req.auth!, userId, parsed);
+    publishRealtimeEvent({ type: "users-updated", tenantId: req.auth!.tenantId });
     res.json(toPublicTenantUser(user));
   } catch (error) {
     const message =
@@ -412,13 +469,72 @@ router.post("/banks", requireAuth, async (req: RequestWithAuth, res) => {
     const bank = await createBank(req.auth!, parsed.name);
     res.status(201).json(bank);
   } catch (error) {
-    res.status(400).json({ message: error instanceof Error ? error.message : "Erro ao criar banco." });
+    const unknownError = error as { message?: string; details?: string; hint?: string; code?: string } | null;
+    const message = errorMessageFromUnknown(error) || "Erro ao criar banco.";
+    console.error("[POST /api/banks] erro:", unknownError ?? error);
+    res.status(400).json({
+      message,
+      details: typeof unknownError?.details === "string" ? unknownError.details : undefined,
+      hint: typeof unknownError?.hint === "string" ? unknownError.hint : undefined,
+      code: typeof unknownError?.code === "string" ? unknownError.code : undefined,
+    });
   }
 });
 
 router.get("/banks", requireAuth, async (req: RequestWithAuth, res) => {
   const items = await listBanks(req.auth!);
   res.json(items);
+});
+
+router.post("/bank-login-requests", requireAuth, async (req: RequestWithAuth, res) => {
+  try {
+    const schema = z.object({
+      productId: z.string().trim().min(1),
+      bankName: z.string().trim().min(1),
+      targetUserId: z.string().trim().min(1).optional(),
+    });
+    const parsed = schema.parse(req.body);
+    const item = await createBankLoginRequest(req.auth!, parsed);
+    publishRealtimeEvent({ type: "bank-login-updated", tenantId: req.auth!.tenantId });
+    res.status(201).json(item);
+  } catch (error) {
+    res.status(400).json({ message: errorMessageFromUnknown(error) || "Erro ao solicitar login em banco." });
+  }
+});
+
+router.get("/bank-login-requests", requireAuth, async (req: RequestWithAuth, res) => {
+  const items = await listBankLoginRequests(req.auth!);
+  res.json(items);
+});
+
+router.get("/bank-login-requests/pending-count", requireAuth, async (req: RequestWithAuth, res) => {
+  const count = await getPendingBankLoginRequestCount(req.auth!);
+  res.json({ count });
+});
+
+router.post("/bank-login-requests/:id/respond", requireAuth, async (req: RequestWithAuth, res) => {
+  try {
+    const schema = z.object({
+      loginUser: z.string().trim().min(1),
+      loginPassword: z.string().trim().min(1),
+    });
+    const parsed = schema.parse(req.body);
+    const item = await respondBankLoginRequest(req.auth!, String(req.params.id), parsed);
+    publishRealtimeEvent({ type: "bank-login-updated", tenantId: req.auth!.tenantId });
+    res.json(item);
+  } catch (error) {
+    res.status(400).json({ message: errorMessageFromUnknown(error) || "Erro ao responder solicitação de login." });
+  }
+});
+
+router.post("/bank-login-requests/:id/viewed", requireAuth, async (req: RequestWithAuth, res) => {
+  try {
+    await markBankLoginRequestViewed(req.auth!, String(req.params.id));
+    publishRealtimeEvent({ type: "bank-login-updated", tenantId: req.auth!.tenantId, userId: req.auth!.userId });
+    res.status(204).end();
+  } catch (error) {
+    res.status(400).json({ message: errorMessageFromUnknown(error) || "Erro ao marcar solicitação como visualizada." });
+  }
 });
 
 router.post("/commission-tables", requireAuth, async (req: RequestWithAuth, res) => {
@@ -433,6 +549,7 @@ router.post("/commission-tables", requireAuth, async (req: RequestWithAuth, res)
     });
     const parsed = schema.parse(req.body);
     const item = await createCommissionTable(req.auth!, parsed);
+    publishRealtimeEvent({ type: "commission-tables-updated", tenantId: req.auth!.tenantId });
     res.status(201).json(item);
   } catch (error) {
     const unknownError = error as { message?: string; details?: string; hint?: string; code?: string } | null;
@@ -443,6 +560,55 @@ router.post("/commission-tables", requireAuth, async (req: RequestWithAuth, res)
           ? unknownError.message
           : "Erro ao criar tabela.";
     console.error("[POST /api/commission-tables] erro:", unknownError ?? error);
+    res.status(400).json({
+      message,
+      details: typeof unknownError?.details === "string" ? unknownError.details : undefined,
+      hint: typeof unknownError?.hint === "string" ? unknownError.hint : undefined,
+      code: typeof unknownError?.code === "string" ? unknownError.code : undefined,
+    });
+  }
+});
+
+router.post("/commission-tables/:id/use", requireAuth, async (req: RequestWithAuth, res) => {
+  try {
+    const tableId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const schema = z.object({ commissionPercent: z.coerce.number().positive() });
+    const parsed = schema.parse(req.body);
+    const item = await applyLeaderCommissionRepasse(req.auth!, tableId, parsed.commissionPercent);
+    publishRealtimeEvent({ type: "commission-tables-updated", tenantId: req.auth!.tenantId });
+    publishRealtimeEvent({ type: "commission-repasse-defined", tenantId: req.auth!.tenantId });
+    res.status(201).json(item);
+  } catch (error) {
+    const unknownError = error as { message?: string; details?: string; hint?: string; code?: string } | null;
+    const message =
+      error instanceof Error
+        ? error.message
+        : typeof unknownError?.message === "string"
+          ? unknownError.message
+          : "Erro ao utilizar tabela.";
+    res.status(400).json({
+      message,
+      details: typeof unknownError?.details === "string" ? unknownError.details : undefined,
+      hint: typeof unknownError?.hint === "string" ? unknownError.hint : undefined,
+      code: typeof unknownError?.code === "string" ? unknownError.code : undefined,
+    });
+  }
+});
+
+router.post("/commission-tables/:id/deactivate", requireAuth, async (req: RequestWithAuth, res) => {
+  try {
+    const tableId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    await deactivateLeaderCommissionRepasse(req.auth!, tableId);
+    publishRealtimeEvent({ type: "commission-tables-updated", tenantId: req.auth!.tenantId });
+    res.status(200).json({ ok: true });
+  } catch (error) {
+    const unknownError = error as { message?: string; details?: string; hint?: string; code?: string } | null;
+    const message =
+      error instanceof Error
+        ? error.message
+        : typeof unknownError?.message === "string"
+          ? unknownError.message
+          : "Erro ao desativar tabela.";
     res.status(400).json({
       message,
       details: typeof unknownError?.details === "string" ? unknownError.details : undefined,
@@ -470,6 +636,7 @@ router.patch("/commission-tables/:id", requireAuth, async (req: RequestWithAuth,
     });
     const parsed = schema.parse(req.body);
     const item = await updateCommissionTable(req.auth!, tableId, parsed);
+    publishRealtimeEvent({ type: "commission-tables-updated", tenantId: req.auth!.tenantId });
     res.json(item);
   } catch (error) {
     const unknown = error as { message?: unknown; details?: unknown; hint?: unknown; code?: unknown } | undefined;
@@ -488,6 +655,7 @@ router.delete("/commission-tables/:id", requireAuth, async (req: RequestWithAuth
   try {
     const tableId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     await deleteCommissionTable(req.auth!, tableId);
+    publishRealtimeEvent({ type: "commission-tables-updated", tenantId: req.auth!.tenantId });
     res.json({ ok: true });
   } catch (error) {
     res.status(400).json({ message: error instanceof Error ? error.message : "Erro ao excluir tabela." });
@@ -498,6 +666,7 @@ router.delete("/commission-tables/by-product/:productId", requireAuth, async (re
   try {
     const productId = Array.isArray(req.params.productId) ? req.params.productId[0] : req.params.productId;
     const removed = await deleteCommissionTablesByProduct(req.auth!, productId);
+    publishRealtimeEvent({ type: "commission-tables-updated", tenantId: req.auth!.tenantId });
     res.json({ ok: true, removed });
   } catch (error) {
     res.status(400).json({ message: error instanceof Error ? error.message : "Erro ao excluir tabelas do produto." });
@@ -510,6 +679,7 @@ router.patch("/products/:id", requireAuth, async (req: RequestWithAuth, res) => 
     const schema = z.object({ name: z.string().trim().min(1) });
     const parsed = schema.parse(req.body);
     const product = await updateProductName(req.auth!, productId, parsed.name);
+    publishRealtimeEvent({ type: "commission-tables-updated", tenantId: req.auth!.tenantId });
     res.json(product);
   } catch (error) {
     res.status(400).json({ message: error instanceof Error ? error.message : "Erro ao editar produto." });
@@ -535,6 +705,7 @@ router.post("/contents", requireAuth, upload.single("file"), async (req: Request
       filePath: req.file.path,
       displayName: parsed.displayName || req.file.originalname || undefined,
     });
+    publishRealtimeEvent({ type: "contents-updated", tenantId: req.auth!.tenantId });
     res.status(201).json(item);
   } catch (error) {
     res.status(400).json({ message: error instanceof Error ? error.message : "Erro ao enviar conteúdo." });
@@ -546,6 +717,7 @@ router.post("/contents/folder", requireAuth, async (req: RequestWithAuth, res) =
     const schema = z.object({ path: z.string().trim().min(1) });
     const parsed = schema.parse(req.body);
     const folder = await createContentFolder(req.auth!, parsed.path);
+    publishRealtimeEvent({ type: "contents-updated", tenantId: req.auth!.tenantId });
     res.status(201).json(folder);
   } catch (error) {
     res.status(400).json({ message: error instanceof Error ? error.message : "Erro ao criar pasta." });
@@ -577,6 +749,7 @@ router.delete("/contents/folder", requireAuth, async (req: RequestWithAuth, res)
   try {
     const folderPath = typeof req.query.path === "string" ? req.query.path : "";
     const removed = await deleteContentsByFolder(req.auth!, folderPath);
+    publishRealtimeEvent({ type: "contents-updated", tenantId: req.auth!.tenantId });
     res.json({ removed });
   } catch (error) {
     res.status(400).json({ message: error instanceof Error ? error.message : "Erro ao excluir pasta." });
@@ -587,6 +760,7 @@ router.delete("/contents/:id", requireAuth, async (req: RequestWithAuth, res) =>
   try {
     const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     await deleteContentById(req.auth!, id);
+    publishRealtimeEvent({ type: "contents-updated", tenantId: req.auth!.tenantId });
     res.json({ ok: true });
   } catch (error) {
     // eslint-disable-next-line no-console

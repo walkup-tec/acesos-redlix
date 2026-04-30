@@ -102,7 +102,8 @@ Todas as rotas REST estão sob o prefixo **`/api`** (a raiz **`/`** serve o pain
 Padrão do projeto: **5050** (evita conflito com outros serviços que usam **5000**).
 
 - Painel: `http://127.0.0.1:5050/`
-- Health: `http://127.0.0.1:5050/api/health` (deve incluir `"service":"credilix-acessos"`)
+- Health: `http://127.0.0.1:5050/api/health` (inclui `service` e metadados de build)
+- Build info: `http://127.0.0.1:5050/api/build`
 
 ## Publicação em produção (FTP + Node)
 
@@ -113,3 +114,13 @@ Domínio alvo documentado: **https://acessos.credilixpromotora.com.br/**
 3. **FTP só copia ficheiros** — no servidor é necessário **Node.js** a correr **`node dist/server.js`** (ou PM2/systemd) e um ficheiro **`.env`** com `APP_BASE_URL` em HTTPS. Alojamento só PHP/static sem Node não serve este projeto tal como está.
 
 - Arranque em produção: `npm run start:prod` (após `npm run build && npm run build:web` no servidor) ou apenas `node dist/server.js` se o build já foi feito no CI/pacote.
+
+## Identificação de build/deploy
+
+Para saber exatamente "o que está no ar", defina no ambiente de produção (EasyPanel):
+
+- `APP_BUILD_LABEL` (ex.: `release-2026-04-29-regra-equipe`)
+- `APP_BUILD_COMMIT` (hash curto do commit)
+- `APP_BUILD_DEPLOYED_AT` (timestamp do deploy, ex.: `2026-04-29T12:40:00Z`)
+
+Com isso, os endpoints `/api/health` e `/api/build` exibem os metadados do deploy atual.

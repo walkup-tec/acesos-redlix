@@ -1,3 +1,306 @@
+## 2026-04-30 - Atualize tudo (backup + build + deploy pronto)
+
+- Backup seletivo executado via `C:\Scripts\backup-d-para-e.ps1` com sucesso.
+- Build do projeto executado com sucesso (`npm run build`).
+- Estado do Git validado e branch principal preparada para publicação.
+- Log: `doc/LOG-2026-04-30__102900__atualize-tudo-backup-build-commit-push.md`.
+
+### Palavras-chave
+
+- atualize tudo deploy pronto
+- backup d para e
+- build typescript credilix
+- commit push main
+
+## 2026-04-30 - Fix: alerta de vendedor ao definir repasse (realtime)
+
+- Criado evento SSE específico `commission-repasse-defined` ao usar repasse.
+- Frontend vendedor passou a reagir ao evento e subir badge de comissão sem refresh.
+- Log: `doc/LOG-2026-04-30__075800__fix-alerta-vendedor-repasse-sem-refresh.md`.
+
+### Palavras-chave
+
+- commission repasse defined event
+- vendedor badge comissao realtime
+- sem refresh repasse lider
+
+## 2026-04-30 - Regra de alerta de comissão para vendedor (após repasse)
+
+- Alerta de `Tabela de Comissão` para vendedor agora sobe apenas quando há nova tabela visível para ele.
+- Implementado cálculo de delta de IDs após evento `commission-tables-updated`.
+- Evita alerta em criação master sem repasse definido.
+- Log: `doc/LOG-2026-04-30__074900__fix-alerta-comissao-vendedor-so-apos-repasse.md`.
+
+### Palavras-chave
+
+- alerta vendedor repasse comissao
+- delta ids tabela visivel
+- comissao sem repasse sem alerta
+
+## 2026-04-30 - Fix: alerta de Login Banco não limpava após visualizar
+
+- Corrigida condição de marcação como visualizado para considerar solicitante e usuário-alvo.
+- Ao abrir `Ver Login`, agora limpa alerta também para quem recebeu login via `target_user_id`.
+- Log: `doc/LOG-2026-04-30__074500__fix-alerta-login-banco-nao-limpa-apos-visualizar.md`.
+
+### Palavras-chave
+
+- bank login viewed target user
+- limpar badge apos ver login
+- requester target viewed
+
+## 2026-04-30 - Alertas por módulo no topo e menu lateral
+
+- Criado contador de alertas para `Usuários`, `Tabela de Comissão` e `Conteúdos`.
+- Menu lateral agora exibe badge por módulo (não apenas Login Banco).
+- Topo passou a renderizar os mesmos ícones do menu com badge correspondente.
+- Log: `doc/LOG-2026-04-30__074000__feat-alertas-modulos-topo-menu-usuarios-comissao-conteudos.md`.
+
+### Palavras-chave
+
+- badges modulo topo menu
+- alertas users products contents
+- mesmos icones menu no topo
+
+## 2026-04-30 - Otimização SSE: refresh seletivo por módulo
+
+- Frontend passou a atualizar apenas o módulo impactado por evento SSE.
+- Eventos mapeados: `users-updated`, `commission-tables-updated`, `contents-updated`, `bank-login-updated`.
+- Fallback mantido para `refreshAll()` quando necessário.
+- Log: `doc/LOG-2026-04-30__073500__perf-realtime-refresh-seletivo-por-modulo.md`.
+
+### Palavras-chave
+
+- sse refresh seletivo
+- event type routing frontend
+- otimizar refreshAll
+
+## 2026-04-30 - Realtime SSE para usuários, comissão e conteúdos
+
+- Expandida emissão de eventos SSE nas mutações de `users`, `commission_tables` e `contents`.
+- Frontend já assinando `/api/events` passa a atualizar essas telas sem refresh manual.
+- Log: `doc/LOG-2026-04-30__073100__feat-realtime-sse-usuarios-comissao-conteudos.md`.
+
+### Palavras-chave
+
+- sse users updated
+- sse commission tables updated
+- sse contents updated
+
+## 2026-04-30 - Fix: vendedor não via login criado pelo líder
+
+- Corrigida listagem de `Login Banco` para usuários finais considerando também `target_user_id`.
+- Contador de pendências e marcação de visualização ajustados para solicitante ou usuário-alvo.
+- Log: `doc/LOG-2026-04-30__072400__fix-login-banco-listagem-vendedor-por-target-user.md`.
+
+### Palavras-chave
+
+- target_user_id login banco
+- vendedor nao ve login do lider
+- pending count solicitante alvo
+
+## 2026-04-30 - Regra de unicidade para solicitação de Login Banco
+
+- Bloqueada criação duplicada de login para o mesmo usuário, banco e produto.
+- Backend passou a validar duplicidade antes de inserir e a tratar `23505` com mensagem amigável.
+- Schema ganhou índice único por tenant + usuário alvo + produto + banco normalizado.
+- Log: `doc/LOG-2026-04-30__071500__fix-login-banco-bloqueio-duplicidade-usuario-produto-banco.md`.
+
+### Palavras-chave
+
+- login banco unico por usuario produto banco
+- bloquear solicitacao duplicada
+- erro amigavel duplicidade
+
+## 2026-04-29 - Alertas de Login Banco em tempo real (SSE)
+
+- Implementado canal realtime via SSE em `GET /api/events`.
+- Frontend assina stream e atualiza automaticamente listagens/badges sem refresh manual.
+- Eventos emitidos no ciclo de solicitação de login banco: criar, responder e visualizar.
+- Log: `doc/LOG-2026-04-29__172300__feat-alerta-login-banco-tempo-real-sse.md`.
+
+### Palavras-chave
+
+- sse eventos tempo real
+- alerta solicitacao login banco sem refresh
+- endpoint api events
+
+## 2026-04-29 - Login Banco: responder, ver login e notificação
+
+- Adicionado fluxo de resposta de solicitação (`Responder`) por líder imediato/master.
+- Implementados modais de resposta e de visualização (`Ver Login`) somente leitura.
+- Listagem dividida em `Usuários Solicitados` (pendentes) e `Usuários Criados` (respondidos).
+- Notificação para solicitante baseada em respostas resolvidas não visualizadas.
+- Log: `doc/LOG-2026-04-29__140800__feat-login-banco-responder-ver-login-notificacao.md`.
+
+### Palavras-chave
+
+- responder solicitacao login banco
+- ver login somente leitura
+- solicitados criados login banco
+
+## 2026-04-29 - Login Banco com usuário-alvo para líder/master
+
+- `LIDER` e `MASTER` passaram a informar obrigatoriamente o usuário da solicitação em `Login Banco`.
+- Frontend recebeu input de pesquisa + select de usuários cadastrados.
+- Backend passou a persistir `target_user_id` em `bank_login_requests` e validar escopo.
+- Listagem de solicitações passou a exibir a coluna de usuário.
+- Log: `doc/LOG-2026-04-29__131500__update-login-banco-selecao-usuario-lider-master.md`.
+
+### Palavras-chave
+
+- login banco usuario alvo
+- target user id solicitacao
+- pesquisar selecionar usuario
+
+## 2026-04-29 - Menu Login Banco com pendências
+
+- Criado módulo `Login Banco` para solicitar login por produto/banco visíveis no escopo do usuário.
+- Backend ganhou tabela `bank_login_requests` e endpoints de criação, listagem e contagem de pendentes.
+- Menu lateral e sino no topo passaram a mostrar quantidade de solicitações pendentes.
+- Build backend/frontend validado após implementação.
+- Log: `doc/LOG-2026-04-29__123000__feat-login-banco-solicitacoes-pendentes.md`.
+
+### Palavras-chave
+
+- login banco solicitacao
+- bank_login_requests
+- badge pendente menu sino
+
+## 2026-04-29 - Fluxo de repasse do líder em tabela de comissão
+
+- MASTER passou a ser o único perfil que cria/edita tabelas base de comissão.
+- LÍDER ganhou ação exclusiva `Utilizar` para definir repasse por tabela (sempre menor que comissão master).
+- Equipe do líder (vendedores/suporte) passa a enxergar o percentual efetivo de repasse do líder.
+- Novo endpoint: `POST /api/commission-tables/:id/use`.
+- Nova tabela no schema: `commission_table_leader_overrides`.
+- Log: `doc/LOG-2026-04-29__112000__feat-repasse-lider-utilizar-tabela-comissao.md`.
+
+### Palavras-chave
+
+- repasse lider tabela comissao
+- utilizar tabela
+- override comissao por lider
+
+## 2026-04-29 - Nova carga de deploy para teste de identificação
+
+- Build backend/frontend regenerado com sucesso.
+- Capturado commit curto atual para identificação (`57efb9c`).
+- `.env.example` atualizado com `APP_BUILD_LABEL`, `APP_BUILD_COMMIT`, `APP_BUILD_DEPLOYED_AT`.
+- Log: `doc/LOG-2026-04-29__095400__prep-carga-deploy-identificacao-build.md`.
+
+### Palavras-chave
+
+- carga deploy identificacao
+- app build commit
+- api build health
+
+## 2026-04-29 - Identificação de build/deploy na API
+
+- Incluídos metadados de release no backend (`label`, `commit`, `deployedAt`, `appVersion`, `startedAt`).
+- `GET /api/health` passou a devolver `build`.
+- Criado endpoint `GET /api/build` para consulta direta da versão em execução.
+- README atualizado com variáveis para EasyPanel (`APP_BUILD_LABEL`, `APP_BUILD_COMMIT`, `APP_BUILD_DEPLOYED_AT`).
+- Log: `doc/LOG-2026-04-29__094700__feat-identificacao-build-deploy-api.md`.
+
+### Palavras-chave
+
+- rastrear deploy
+- build label commit
+- api build endpoint
+
+## 2026-04-29 - Build final validado
+
+- Build backend (`npm run build`) e frontend (`npm run build:web`) executados com sucesso.
+- Projeto pronto para pipeline de build/deploy no EasyPanel.
+- Log: `doc/LOG-2026-04-29__094500__build-validado-backend-frontend.md`.
+
+### Palavras-chave
+
+- build final pronto
+- validacao build credilix
+- deploy easypanel
+
+## 2026-04-29 - Validação de vínculo líder para conteúdo pré-existente
+
+- Executado saneamento para vínculos de equipe em `users` (`leader_user_id` baseado em `created_by_user_id`).
+- Resultado: nenhum ajuste necessário (`patched=0`), vínculos já consistentes.
+- Reforço: escopo de conteúdos/tabelas no backend não depende da data de criação, e sim do vínculo da equipe.
+- Log: `doc/LOG-2026-04-29__091700__check-backfill-vinculo-lider-usuarios-legado.md`.
+
+### Palavras-chave
+
+- conteudo antigo lider para vendedor novo
+- validar leader user id
+- escopo por equipe
+
+## 2026-04-29 - Correção de visibilidade vendedor vs líder
+
+- Corrigida resolução de escopo para evitar `leader_user_id` auto-referente em usuários não líderes.
+- Vendedor passa a herdar corretamente escopo do líder criador (conteúdos/tabelas da equipe).
+- Ajustado vínculo de `somaconecta@gmail.com` para o líder `mozart.hotmart@gmail.com` no banco.
+- Log: `doc/LOG-2026-04-29__085800__fix-visibilidade-vendedor-herdar-conteudo-do-lider.md`.
+
+### Palavras-chave
+
+- vendedor nao ve conteudo do lider
+- leader user id autocontido
+- herdar escopo equipe
+
+## 2026-04-29 - Exclusão de usuário por e-mail (somaconecta)
+
+- Usuário `somaconecta@gmail.com` removido do `public.users` no Supabase.
+- Validação pós-exclusão retornou zero registros.
+- Log: `doc/LOG-2026-04-29__085200__delete-usuario-somaconecta-gmail.md`.
+
+### Palavras-chave
+
+- excluir usuario por email
+- somaconecta gmail
+- cleanup users credilix
+
+## 2026-04-29 - Preparação de build para EasyPanel
+
+- Dependências instaladas (raiz + `web`) e build de produção validado (`npm run build` + `npm run build:web`).
+- Start de produção validado localmente com `npm run start:prod`.
+- Healthcheck OK em `/api/health` e bootstrap Supabase concluído.
+- Log: `doc/LOG-2026-04-29__082800__prep-build-easypanel-validacao-local.md`.
+
+### Palavras-chave
+
+- build easypanel
+- start prod credilix
+- healthcheck api
+
+## 2026-04-29 - Limpeza de usuários (preservando master)
+
+- Executada limpeza no Supabase para manter somente `master@credilix.local` no tenant.
+- Dependências também foram limpas para consistência referencial (`products`, `commission_tables`, `contents` e `banks` quando existir).
+- Resultado final: `users=1` (master), demais listas zeradas.
+- Log: `doc/LOG-2026-04-29__082400__cleanup-usuarios-manter-apenas-master.md`.
+
+### Palavras-chave
+
+- cleanup usuarios master
+- manter master credilix
+- limpeza tenant supabase
+
+## 2026-04-29 - Regra de visibilidade master/lider/equipe
+
+- Implementado isolamento por equipe no backend: `MASTER` vê tudo; `LIDER` vê apenas sua equipe.
+- Apenas `MASTER` pode criar usuários com papel `LIDER`.
+- Listagens de usuários, produtos, bancos, tabelas e conteúdos agora respeitam escopo por líder.
+- Ações sensíveis de gestão de usuário e conteúdo/tabela também validam escopo de equipe.
+- Schema atualizado com `users.created_by_user_id` e `users.leader_user_id` (com índices).
+- Log: `doc/LOG-2026-04-29__081700__fix-regra-visibilidade-master-lider-equipe.md`.
+
+### Palavras-chave
+
+- master lider equipe
+- leader_user_id
+- created_by_user_id users
+- isolamento por equipe credilix
+
 # Mem?ria consolidada do projeto
 
 ## 2026-04-06 - Supabase exclusivo + identidade visual Credilix
@@ -909,3 +1212,15 @@
 
 - supabase/cleanup-banco-tenant-credilix.sql: remove commission_tables, contents, products, banks e users exceto master@credilix.local; ordem por FKs; tenant ajustável.
 - Log: doc/LOG-2026-04-14__220000__script-sql-limpeza-banco-tenant-credilix.md.
+
+## 2026-04-15 - Exclusão de usuário de teste por e-mail
+
+- Removido `mozart.pmo@gmail.com` diretamente da tabela `users` via comando controlado com filtro por e-mail.
+- Validação antes/depois da operação: `beforeCount=1` e `afterCount=0`.
+- Log: doc/LOG-2026-04-15__132615__delete-usuario-teste-por-email.md.
+
+### Palavras-chave para pesquisa futura
+
+- excluir usuario por email
+- delete users supabase
+- mozart.pmo@gmail.com
