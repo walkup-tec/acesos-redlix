@@ -1,3 +1,18 @@
+## 2026-04-30 - Execução real de cleanup no tenant Credilix
+
+- Limpeza executada diretamente no Supabase (não apenas script preparado).
+- Removidos dados de `commission_table_leader_overrides`, `commission_tables`, `contents`, `bank_login_requests`, `products` e `banks`.
+- Removidos usuários do tenant, mantendo somente `master@credilix.local`.
+- Validação final com contagens zeradas nas tabelas solicitadas.
+- Log: `doc/LOG-2026-04-30__111300__exec-cleanup-tenant-credilix-apenas-master.md`.
+
+### Palavras-chave
+
+- cleanup supabase executado
+- credilix master only
+- reset comissao conteudos banco
+- users delete except master
+
 ## 2026-04-30 - Cleanup completo do tenant (exceto master)
 
 - Script de limpeza do Credilix atualizado para remover também `bank_login_requests` e `commission_table_leader_overrides`.
